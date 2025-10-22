@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 
 class Trainer:
     def __init__(self, cfg):
+        self.debug = False
         self.cfg = cfg
         with open_dict(cfg):
             cfg["saved_folder"] = os.getcwd()
@@ -159,15 +160,15 @@ class Trainer:
             "epoch",
         ]
         self._keys_to_save += (
-            ["encoder", "encoder_optimizer"] if self.train_encoder else []
+            ["encoder"] if self.train_encoder else []
         )
         self._keys_to_save += (
-            ["predictor", "predictor_optimizer"]
+            ["predictor"]
             if self.train_predictor and self.cfg.has_predictor
             else []
         )
         self._keys_to_save += (
-            ["decoder", "decoder_optimizer"] if self.train_decoder else []
+            ["decoder"] if self.train_decoder else []
         )
         self._keys_to_save += ["action_encoder", "proprio_encoder"]
 
@@ -175,6 +176,10 @@ class Trainer:
         self.init_optimizers()
 
         self.epoch_log = OrderedDict()
+
+    def print(self, *args):
+        if self.debug:
+            print(*args)
 
     def save_ckpt(self):
         self.accelerator.wait_for_everyone()
@@ -187,8 +192,21 @@ class Trainer:
                     ckpt[k] = self.accelerator.unwrap_model(self.__dict__[k])
                 else:
                     ckpt[k] = self.__dict__[k]
-            torch.save(ckpt, "checkpoints/model_latest.pth")
-            torch.save(ckpt, f"checkpoints/model_{self.epoch}.pth")
+            import pickle, traceback
+            try:
+                torch.save(ckpt, "checkpoints/model_latest.pth")
+                torch.save(ckpt, f"checkpoints/model_{self.epoch}.pth")
+            except Exception as e:
+                self.print("torch.save failed:", repr(e))
+                for key, val in ckpt.items():
+                    try:
+                        pickle.dumps(val, protocol=pickle.HIGHEST_PROTOCOL)
+                    except Exception as ex:
+                        self.print(f"UNPICKLABLE KEY: {key}  TYPE: {type(val)}  REPR: {repr(val)[:300]}")
+                        traceback.print_exc()
+                raise
+            # torch.save(ckpt, "checkpoints/model_latest.pth")
+            # torch.save(ckpt, f"checkpoints/model_{self.epoch}.pth")
             log.info("Saved model to {}".format(os.getcwd()))
             ckpt_path = os.path.join(os.getcwd(), f"checkpoints/model_{self.epoch}.pth")
         else:
@@ -226,7 +244,7 @@ class Trainer:
             emb_dim=self.cfg.proprio_emb_dim,
         )
         proprio_emb_dim = self.proprio_encoder.emb_dim
-        print(f"Proprio encoder type: {type(self.proprio_encoder)}")
+        self.print(f"Proprio encoder type: {type(self.proprio_encoder)}")
         self.proprio_encoder = self.accelerator.prepare(self.proprio_encoder)
 
         self.action_encoder = hydra.utils.instantiate(
@@ -235,7 +253,7 @@ class Trainer:
             emb_dim=self.cfg.action_emb_dim,
         )
         action_emb_dim = self.action_encoder.emb_dim
-        print(f"Action encoder type: {type(self.action_encoder)}")
+        self.print(f"Action encoder type: {type(self.action_encoder)}")
 
         self.action_encoder = self.accelerator.prepare(self.action_encoder)
 
@@ -266,6 +284,7 @@ class Trainer:
                         + action_emb_dim * self.cfg.num_action_repeat
                     )
                     * (self.cfg.concat_dim),
+                    action_dim=action_emb_dim,
                 )
             if not self.train_predictor:
                 for param in self.predictor.parameters():
@@ -373,7 +392,7 @@ class Trainer:
                 ]
                 for epoch, job_name, job in finished_jobs:
                     result = job.result()
-                    print(f"Logging result for {job_name} at epoch {epoch}: {result}")
+                    self.print(f"Logging result for {job_name} at epoch {epoch}: {result}")
                     log_data = {
                         f"{job_name}/{key}": value for key, value in result.items()
                     }
@@ -435,7 +454,19 @@ class Trainer:
     def err_eval_single(self, z_pred, z_tgt):
         logs = {}
         for k in z_pred.keys():
-            loss = self.model.emb_criterion(z_pred[k], z_tgt[k])
+            # self.print(f"z_pred[{k}].shape: {z_pred[k].shape}, z_tgt[{k}].shape: {z_tgt[k].shape}")
+            z_p, z_t = z_pred[k], z_tgt[k]
+            #TODO: this hould not be used, just a fix because sometimes shapes don't match (eval)
+            if z_pred[k].shape != z_tgt[k].shape:
+                if k == "visual":
+                    z_p = z_pred[k]
+                    z_t = z_tgt[k][:,1:,:,:-self.model.action_dim]
+                elif k == "proprio":
+                    z_p = z_pred[k][:,:,-1,:]
+                    z_t = z_tgt[k][:,1:,:]
+                
+            # self.print(f"z_p.shape: {z_p.shape}, z_t.shape: {z_t.shape}")
+            loss = self.model.emb_criterion(z_p, z_t)
             logs[k] = loss
         return logs
 
@@ -458,6 +489,7 @@ class Trainer:
             z_tgt_slice = slice_trajdict_with_t(
                 z_tgt, start_idx=start_idx, end_idx=end_idx
             )
+            self.print(f"Evaluating {name} slice: z_out_slice['visual'].shape: {z_out_slice['visual'].shape}, z_tgt_slice['visual'].shape: {z_tgt_slice['visual'].shape}")
             z_err = self.err_eval_single(z_out_slice, z_tgt_slice)
 
             logs.update({f"z_{k}_err_{name}": v for k, v in z_err.items()})
@@ -522,7 +554,7 @@ class Trainer:
 
                 if visual_out is not None:
                     for t in range(
-                        self.cfg.num_hist, self.cfg.num_hist + self.cfg.num_pred
+                        self.cfg.num_hist, self.cfg.num_hist + self.cfg.num_pred-1
                     ):
                         img_pred_scores = eval_images(
                             visual_out[:, t - self.cfg.num_pred], obs["visual"][:, t]
@@ -537,7 +569,9 @@ class Trainer:
                         self.logs_update(img_pred_scores)
 
                 if visual_reconstructed is not None:
-                    for t in range(obs["visual"].shape[1]):
+                    for t in range(obs["visual"].shape[1]-2):
+                        # self.print(f"Evaluating reconstruction for time step {t}")
+                        # self.print(f"visual_reconstructed.shape: {visual_reconstructed.shape}, obs['visual'].shape: {obs['visual'].shape}")
                         img_reconstruction_scores = eval_images(
                             visual_reconstructed[:, t], obs["visual"][:, t]
                         )
@@ -563,7 +597,11 @@ class Trainer:
             loss_components = {f"train_{k}": [v] for k, v in loss_components.items()}
             self.logs_update(loss_components)
 
+            # if i >= 10:
+            #     break
+
     def val(self):
+        self.print("\n\nVALIDATING")
         self.model.eval()
         if len(self.train_traj_dset) > 0 and self.cfg.has_predictor:
             with torch.no_grad():
@@ -620,8 +658,11 @@ class Trainer:
                     for t in range(
                         self.cfg.num_hist, self.cfg.num_hist + self.cfg.num_pred
                     ):
+                        self.print(f"visual_out.shape: {visual_out.shape}, obs['visual'].shape: {obs['visual'].shape}")
+                        self.print(f"indexing with t: {t} - num_pred: {self.cfg.num_pred}")
                         img_pred_scores = eval_images(
-                            visual_out[:, t - self.cfg.num_pred], obs["visual"][:, t]
+                            # TODO: added -1 here, why?
+                            visual_out[:, t - self.cfg.num_pred - 1], obs["visual"][:, t]
                         )
                         img_pred_scores = self.accelerator.gather_for_metrics(
                             img_pred_scores
@@ -633,7 +674,10 @@ class Trainer:
                         self.logs_update(img_pred_scores)
 
                 if visual_reconstructed is not None:
-                    for t in range(obs["visual"].shape[1]):
+                    self.print(f"visual_reconstructed.shape: {visual_reconstructed.shape}, obs['visual'].shape: {obs['visual'].shape}")
+                    # for t in range(obs["visual"].shape[1]):
+                    for t in range(visual_reconstructed.shape[1]):
+                        self.print(f"Evaluating reconstruction for time step {t}")
                         img_reconstruction_scores = eval_images(
                             visual_reconstructed[:, t], obs["visual"][:, t]
                         )
@@ -670,10 +714,11 @@ class Trainer:
         logs = {}
 
         # rollout with both num_hist and 1 frame as context
-        num_past = [(self.cfg.num_hist, ""), (1, "_1framestart")]
+        num_past = [(self.cfg.num_hist, "")]#, (1, "_1framestart")]
 
         # sample traj
         for idx in range(num_rollout):
+            self.print(f"\n\nStarting rollout {idx}/{num_rollout}...")
             valid_traj = False
             while not valid_traj:
                 traj_idx = np.random.randint(0, len(dset))
@@ -702,6 +747,7 @@ class Trainer:
                     start + horizon * self.cfg.frameskip + 1 : 
                     self.cfg.frameskip
                 ]
+            self.print(f"Rollout traj {idx} from {start} to {start + horizon * self.cfg.frameskip} with horizon {horizon}")
             act = act[start : start + horizon * self.cfg.frameskip]
             act = rearrange(act, "(h f) d -> h (f d)", f=self.cfg.frameskip)
 
@@ -711,6 +757,7 @@ class Trainer:
             z_g = self.model.encode_obs(obs_g)
             actions = act.unsqueeze(0)
 
+            self.print(f"num_past: {num_past}")
             for past in num_past:
                 n_past, postfix = past
 
@@ -719,9 +766,11 @@ class Trainer:
                     obs_0[k] = (
                         obs[k][:n_past].unsqueeze(0).to(self.device)
                     )  # unsqueeze for batch, (b, t, c, h, w)
-
+                self.print(f"Performing rollout with {n_past} context frames, obs_0['visual'].shape: {obs_0['visual'].shape}, actions.shape: {actions.shape}")
                 z_obses, z = self.model.rollout(obs_0, actions)
+                self.print(f"z_obses: {z_obses['visual'].shape}")
                 z_obs_last = slice_trajdict_with_t(z_obses, start_idx=-1, end_idx=None)
+                self.print(f"z_obs_last: {z_obs_last['visual'].shape}, z_g: {z_g['visual'].shape}")
                 div_loss = self.err_eval_single(z_obs_last, z_g)
 
                 for k in div_loss.keys():
@@ -841,7 +890,7 @@ class Trainer:
         )
 
 
-@hydra.main(config_path="conf", config_name="train")
+@hydra.main(config_path="conf", config_name="ca_train")
 def main(cfg: OmegaConf):
     trainer = Trainer(cfg)
     trainer.run()

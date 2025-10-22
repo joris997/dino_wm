@@ -67,3 +67,30 @@ class ProprioceptiveEmbedding(nn.Module):
         x = self.patch_embed(x)
         x = x.permute(0, 2, 1)
         return x
+
+class ProprioceptiveDecoding(nn.Module):
+    def __init__(
+        self,
+        num_frames=16,
+        tubelet_size=1,
+        out_chans=8,
+        emb_dim=384
+    ):
+        super().__init__()
+        self.num_frames = num_frames
+        self.tubelet_size = tubelet_size
+        self.out_chans = out_chans
+        self.emb_dim = emb_dim
+
+        self.patch_deembed = nn.ConvTranspose1d(
+            emb_dim,
+            out_chans,
+            kernel_size=tubelet_size,
+            stride=tubelet_size)
+
+    def forward(self, x):
+        # x: proprioceptive vectors of shape [B T D]
+        x = x.permute(0, 2, 1)
+        x = self.patch_deembed(x)
+        x = x.permute(0, 2, 1)
+        return x

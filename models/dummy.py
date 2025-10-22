@@ -36,3 +36,23 @@ class DummyRepeatActionEncoder(nn.Module):
         act_repeated = act.repeat(1, 1, num_repeat)
         processed_act[:, :, :num_repeat * act_dim] = act_repeated
         return processed_act
+
+class DummyRepeatActionDecoder(nn.Module):
+    def __init__(self, out_chans, emb_dim, **kwargs):
+        super().__init__()
+        self.name = "dummy_repeat"
+        self.latent_ndim = 1
+        self.out_chans = out_chans
+        self.emb_dim = emb_dim
+        self.fc = nn.Linear(emb_dim, 1)  # not used
+
+    def forward(self, act_emb):
+        '''
+        (b, t, action_emb_dim) --> (b, t, act_dim)
+        '''
+        b, t, emb_dim = act_emb.shape
+        num_repeat = emb_dim // self.out_chans
+        processed_act = torch.zeros([b, t, self.out_chans]).to(act_emb.device)
+        act_repeated = act_emb.repeat(1, 1, num_repeat)
+        processed_act[:, :, :num_repeat * self.out_chans] = act_repeated
+        return processed_act
