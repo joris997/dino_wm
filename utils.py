@@ -91,3 +91,15 @@ def pil_loader(path):
     with open(path, "rb") as f:
         with Image.open(f) as img:
             return img.convert("RGB")
+
+def strip_targets_from_cfg(cfg):
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    # loop through all keys and remove the ones for which the value 
+    # is a dict which contains the key '_target_'
+    keys_to_remove = []
+    for key, value in cfg_dict.items():
+        if isinstance(value, dict) and '_target_' in value:
+            keys_to_remove.append(key)
+    for key in keys_to_remove:
+        del cfg_dict[key]
+    return cfg_dict

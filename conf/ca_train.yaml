@@ -33,7 +33,7 @@ hydra:
 training:
   seed: 0
   epochs: 100
-  batch_size: 2 # was 16 should >= nodes * tasks_per_node
+  batch_size: 16 # was 16 should >= nodes * tasks_per_node
   save_every_x_epoch: 1
   reconstruct_every_x_batch: 500
   num_reconstruct_samples: 6
@@ -45,7 +45,6 @@ training:
 
 img_size: 224 # should be a multiple of 224
 frameskip: 5
-concat_dim: 1
 
 normalize_action: True
 
@@ -66,13 +65,13 @@ model:
   _target_: models.ca_visual_world_model.VWorldModel
   image_size: ${img_size}
   num_hist: ${num_hist}
-  num_pred: ${num_pred}
+  num_pred: 1
   train_encoder: False
   train_predictor: True
   train_decoder: True
   train_action_decoder: True
 
-debug: False 
+debug: True 
 
 # Planning params for planning eval jobs launched during training
 plan_settings: 

@@ -2,4 +2,4 @@ __pycache__
 *.pyc
 outputs
 plan_outputs
-datasets
+datasets/data

@@ -21,14 +21,13 @@ from hydra.core.hydra_config import HydraConfig
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from metrics.image_metrics import eval_images
-from utils import slice_trajdict_with_t, cfg_to_dict, seed, sample_tensors
+from utils import slice_trajdict_with_t, cfg_to_dict, seed, sample_tensors, strip_targets_from_cfg
 
 warnings.filterwarnings("ignore")
 log = logging.getLogger(__name__)
 
 class Trainer:
     def __init__(self, cfg):
-        self.debug = False
         self.cfg = cfg
         with open_dict(cfg):
             cfg["saved_folder"] = os.getcwd()
@@ -178,7 +177,7 @@ class Trainer:
         self.epoch_log = OrderedDict()
 
     def print(self, *args):
-        if self.debug:
+        if self.cfg.debug:
             print(*args)
 
     def save_ckpt(self):
@@ -269,9 +268,6 @@ class Trainer:
             num_side_patches = self.cfg.img_size // decoder_scale
             num_patches = num_side_patches**2
 
-        if self.cfg.concat_dim == 0:
-            num_patches += 2
-
         if self.cfg.has_predictor:
             if self.predictor is None:
                 self.predictor = hydra.utils.instantiate(
@@ -282,8 +278,7 @@ class Trainer:
                     + (
                         proprio_emb_dim * self.cfg.num_proprio_repeat
                         + action_emb_dim * self.cfg.num_action_repeat
-                    )
-                    * (self.cfg.concat_dim),
+                    ),
                     action_dim=action_emb_dim,
                 )
             if not self.train_predictor:
@@ -339,9 +334,9 @@ class Trainer:
             action_decoder=self.action_decoder,
             proprio_dim=proprio_emb_dim,
             action_dim=action_emb_dim,
-            concat_dim=self.cfg.concat_dim,
             num_action_repeat=self.cfg.num_action_repeat,
             num_proprio_repeat=self.cfg.num_proprio_repeat,
+            cfg_dict=strip_targets_from_cfg(self.cfg),
         )
 
     def init_optimizers(self):
@@ -454,16 +449,17 @@ class Trainer:
     def err_eval_single(self, z_pred, z_tgt):
         logs = {}
         for k in z_pred.keys():
-            # self.print(f"z_pred[{k}].shape: {z_pred[k].shape}, z_tgt[{k}].shape: {z_tgt[k].shape}")
+            self.print(f"Evaluating {k} embeddings")
+            self.print(f"z_pred[{k}].shape: {z_pred[k].shape}, z_tgt[{k}].shape: {z_tgt[k].shape}")
             z_p, z_t = z_pred[k], z_tgt[k]
             #TODO: this hould not be used, just a fix because sometimes shapes don't match (eval)
             if z_pred[k].shape != z_tgt[k].shape:
                 if k == "visual":
                     z_p = z_pred[k]
-                    z_t = z_tgt[k][:,1:,:,:-self.model.action_dim]
+                    z_t = z_tgt[k]
                 elif k == "proprio":
                     z_p = z_pred[k][:,:,-1,:]
-                    z_t = z_tgt[k][:,1:,:]
+                    z_t = z_tgt[k][:,:,:]
                 
             # self.print(f"z_p.shape: {z_p.shape}, z_t.shape: {z_t.shape}")
             loss = self.model.emb_criterion(z_p, z_t)
@@ -479,10 +475,11 @@ class Trainer:
         logs = {}
         slices = {
             "full": (None, None),
-            "pred": (-self.model.num_pred, None),
-            "next1": (-self.model.num_pred, -self.model.num_pred + 1),
+            "pred": (-self.cfg.num_pred, None),
+            "next1": (-self.cfg.num_pred, -self.cfg.num_pred + 1),
         }
         for name, (start_idx, end_idx) in slices.items():
+            self.print(f"\nEvaluating {name} slice: start_idx={start_idx}, end_idx={end_idx}")
             z_out_slice = slice_trajdict_with_t(
                 z_out, start_idx=start_idx, end_idx=end_idx
             )
@@ -500,12 +497,16 @@ class Trainer:
         for i, data in enumerate(
             tqdm(self.dataloaders["train"], desc=f"Epoch {self.epoch} Train")
         ):
+            self.print("\n\n\nTRAINING BATCH", i)
             obs, act, state = data
             plot = i == 0  # only plot from the first batch
             self.model.train()
             z_out, visual_out, visual_reconstructed, loss, loss_components = self.model(
                 obs, act
             )
+            self.print(f"z_out.shape: {z_out.shape}, visual_out.shape: {visual_out.shape}, \
+                \nvisual_reconstructed.shape: {visual_reconstructed.shape}, \
+                \nobs['visual'].shape: {obs['visual'].shape} act.shape: {act.shape}")
 
             self.encoder_optimizer.zero_grad()
             if self.cfg.has_decoder:
@@ -537,12 +538,14 @@ class Trainer:
             if self.cfg.has_decoder and plot:
                 # only eval images when plotting due to speed
                 if self.cfg.has_predictor:
-                    z_obs_out, z_act_out = self.model.separate_emb(z_out)
-                    z_gt = self.model.encode_obs(obs)
-                    z_tgt = slice_trajdict_with_t(z_gt, start_idx=self.model.num_pred)
+                    o_out, p_out, u_hist_out = self.model.separate_emb(z_out)
+                    o_dct_out = {'visual': o_out, 'proprio': p_out}
+                    o_dct_gt = self.model.encode_obs(obs)
+                    o_dct_tgt = slice_trajdict_with_t(o_dct_gt, start_idx=self.cfg.num_pred)
 
                     state_tgt = state[:, -self.model.num_hist :]  # (b, num_hist, dim)
-                    err_logs = self.err_eval(z_obs_out, z_tgt)
+                    self.print(f"o_out['visual'].shape: {o_dct_out['visual'].shape}, o_dct_tgt['visual'].shape: {o_dct_tgt['visual'].shape}")
+                    err_logs = self.err_eval(o_dct_out, o_dct_tgt)
 
                     err_logs = self.accelerator.gather_for_metrics(err_logs)
                     err_logs = {
@@ -597,7 +600,7 @@ class Trainer:
             loss_components = {f"train_{k}": [v] for k, v in loss_components.items()}
             self.logs_update(loss_components)
 
-            # if i >= 10:
+            # if i >= 2:
             #     break
 
     def val(self):
@@ -639,12 +642,13 @@ class Trainer:
             if self.cfg.has_decoder and plot:
                 # only eval images when plotting due to speed
                 if self.cfg.has_predictor:
-                    z_obs_out, z_act_out = self.model.separate_emb(z_out)
-                    z_gt = self.model.encode_obs(obs)
-                    z_tgt = slice_trajdict_with_t(z_gt, start_idx=self.model.num_pred)
+                    o_out, p_out, z_act_out = self.model.separate_emb(z_out)
+                    o_dct_out = {'visual': o_out, 'proprio': p_out}
+                    o_dct_gt = self.model.encode_obs(obs)
+                    o_dct_tgt = slice_trajdict_with_t(o_dct_gt, start_idx=self.cfg.num_pred)
 
                     state_tgt = state[:, -self.model.num_hist :]  # (b, num_hist, dim)
-                    err_logs = self.err_eval(z_obs_out, z_tgt)
+                    err_logs = self.err_eval(o_dct_out, o_dct_tgt)
 
                     err_logs = self.accelerator.gather_for_metrics(err_logs)
                     err_logs = {
@@ -656,13 +660,13 @@ class Trainer:
 
                 if visual_out is not None:
                     for t in range(
-                        self.cfg.num_hist, self.cfg.num_hist + self.cfg.num_pred
+                        self.cfg.num_hist-1, self.cfg.num_hist-1 + self.cfg.num_pred
                     ):
                         self.print(f"visual_out.shape: {visual_out.shape}, obs['visual'].shape: {obs['visual'].shape}")
                         self.print(f"indexing with t: {t} - num_pred: {self.cfg.num_pred}")
                         img_pred_scores = eval_images(
                             # TODO: added -1 here, why?
-                            visual_out[:, t - self.cfg.num_pred - 1], obs["visual"][:, t]
+                            visual_out[:, t - self.cfg.num_pred], obs["visual"][:, t]
                         )
                         img_pred_scores = self.accelerator.gather_for_metrics(
                             img_pred_scores
@@ -723,6 +727,7 @@ class Trainer:
             while not valid_traj:
                 traj_idx = np.random.randint(0, len(dset))
                 obs, act, state, _ = dset[traj_idx]
+                self.print(f"Selected traj idx {traj_idx} with obs['visual'].shape: {obs['visual'].shape}, act.shape: {act.shape}")
                 act = act.to(self.device)
                 if rand_start_end:
                     if obs["visual"].shape[0] > min_horizon * self.cfg.frameskip + 1:
@@ -754,7 +759,7 @@ class Trainer:
             obs_g = {}
             for k in obs.keys():
                 obs_g[k] = obs[k][-1].unsqueeze(0).unsqueeze(0).to(self.device)
-            z_g = self.model.encode_obs(obs_g)
+            o_dct_g = self.model.encode_obs(obs_g)
             actions = act.unsqueeze(0)
 
             self.print(f"num_past: {num_past}")
@@ -770,8 +775,8 @@ class Trainer:
                 z_obses, z = self.model.rollout(obs_0, actions)
                 self.print(f"z_obses: {z_obses['visual'].shape}")
                 z_obs_last = slice_trajdict_with_t(z_obses, start_idx=-1, end_idx=None)
-                self.print(f"z_obs_last: {z_obs_last['visual'].shape}, z_g: {z_g['visual'].shape}")
-                div_loss = self.err_eval_single(z_obs_last, z_g)
+                self.print(f"z_obs_last: {z_obs_last['visual'].shape}, o_dct_g: {o_dct_g['visual'].shape}")
+                div_loss = self.err_eval_single(z_obs_last, o_dct_g)
 
                 for k in div_loss.keys():
                     log_key = f"z_{k}_err_rollout{postfix}"
@@ -852,7 +857,7 @@ class Trainer:
             pred_imgs = torch.cat(
                 (
                     torch.full(
-                        (num_samples, self.model.num_pred, *pred_imgs.shape[2:]),
+                        (num_samples, 1, *pred_imgs.shape[2:]),
                         -1,
                         device=self.device,
                     ),
