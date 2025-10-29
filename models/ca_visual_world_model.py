@@ -47,14 +47,14 @@ class VWorldModel(nn.Module):
         self.emb_dim = self.encoder.emb_dim + (self.action_dim + self.proprio_dim) # Not used
 
         self.Ts = self.cfg_dict.frameskip/30.0 # TODO: assume 30Hz data for now
-        print(f"num_action_repeat: {self.num_action_repeat}")
-        print(f"num_proprio_repeat: {self.num_proprio_repeat}")
-        print(f"proprio encoder: {proprio_encoder}")
-        print(f"action encoder: {action_encoder}")
-        print(f"action decoder: {action_decoder}")
-        print(f"proprio_dim: {proprio_dim}, after repeat: {self.proprio_dim}")
-        print(f"action_dim: {action_dim}, after repeat: {self.action_dim}")
-        print(f"emb_dim: {self.emb_dim}")
+        self.print(f"num_action_repeat: {self.num_action_repeat}")
+        self.print(f"num_proprio_repeat: {self.num_proprio_repeat}")
+        self.print(f"proprio encoder: {proprio_encoder}")
+        self.print(f"action encoder: {action_encoder}")
+        self.print(f"action decoder: {action_decoder}")
+        self.print(f"proprio_dim: {proprio_dim}, after repeat: {self.proprio_dim}")
+        self.print(f"action_dim: {action_dim}, after repeat: {self.action_dim}")
+        self.print(f"emb_dim: {self.emb_dim}")
 
         if "dino" in self.encoder.name:
             decoder_scale = 16  # from vqvae
@@ -190,6 +190,7 @@ class VWorldModel(nn.Module):
         # reshape to a batch of windows of inputs
         z_rshp = rearrange(z, "b t p d -> b (t p) d")
         u_rshp = rearrange(u, "b t p d -> b (t p) d")
+        self.print(f"z_rshp.shape: {z_rshp.shape}, u_rshp.shape: {u_rshp.shape}")
 
         dz_rshp = self.predictor(z_rshp, u_rshp)
         dz = rearrange(dz_rshp, "b (t p) d -> b t p d", t=z.shape[1])
@@ -276,6 +277,7 @@ class VWorldModel(nn.Module):
         loss = 0
         loss_components = {}
         o, z, u = self.encode(obs, act)
+        self.print(f"act: {act}")
         # for the targets, we remove 1 index as the last observation is removed to align it with the action history
         o_src = o[:, : self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
         o_tgt = o[:, 1:1 + self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
@@ -284,7 +286,6 @@ class VWorldModel(nn.Module):
         u_src = u[:, :1, :, :]  # (b, num_hist, action_dim)
         u_tgt = u[:, :1, :, :]  # (b, num_hist, action_dim)
         visual_src = obs['visual'][:, :self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
-        #TODO: why this size? should just predict 1 frame
         visual_tgt = obs['visual'][:, 1:1 + self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
         self.print(f"\no_src.shape: {o_src.shape}, o_tgt.shape: {o_tgt.shape}")
         self.print(f"u_src.shape: {u_src.shape}, u_tgt.shape: {u_tgt.shape}")
@@ -315,15 +316,15 @@ class VWorldModel(nn.Module):
             # Compute loss for visual, proprio, action dims
             self.print(f"z_pred.shape: {z_pred.shape}, z_tgt.shape: {z_tgt.shape}")
             z_visual_loss = self.emb_criterion(
-                z_pred[:, :, :, :-self.action_dim-self.proprio_dim], \
+                z_pred[:, :, :, :-self.action_dim-self.proprio_dim],
                 z_tgt[:, :, :, :-self.action_dim-self.proprio_dim].detach()
             )
             z_proprio_loss = self.emb_criterion(
-                z_pred[:, :, :, -self.proprio_dim-self.action_dim:-self.action_dim], \
+                z_pred[:, :, :, -self.proprio_dim-self.action_dim:-self.action_dim],
                 z_tgt[:, :, :, -self.proprio_dim-self.action_dim:-self.action_dim].detach()
             )
             z_act_history_loss = self.emb_criterion(
-                z_pred[:, :, :, -self.action_dim:], \
+                z_pred[:, :, :, -self.action_dim:],
                 z_tgt[:, :, :, -self.action_dim:].detach()
             )
             z_loss = self.emb_criterion(
@@ -335,6 +336,7 @@ class VWorldModel(nn.Module):
             loss_components["z_loss"] = z_loss
             loss_components["z_visual_loss"] = z_visual_loss
             loss_components["z_proprio_loss"] = z_proprio_loss
+            loss_components["z_act_history_loss"] = z_act_history_loss
         else:
             visual_pred = None
             z_pred = None
@@ -355,31 +357,18 @@ class VWorldModel(nn.Module):
                 + self.decoder_latent_loss_weight * diff_reconstructed
             )
 
-            loss_components["decoder_recon_loss_reconstructed"] = (
-                recon_loss_reconstructed
-            )
+            loss_components["decoder_recon_loss_reconstructed"] = recon_loss_reconstructed
             loss_components["decoder_vq_loss_reconstructed"] = diff_reconstructed
-            loss_components["decoder_loss_reconstructed"] = (
-                decoder_loss_reconstructed
-            )
+            loss_components["decoder_loss_reconstructed"] = decoder_loss_reconstructed
             loss = loss + decoder_loss_reconstructed
 
             # Control reconstruction loss
             self.print(f"act_reconstructed.shape: {act_reconstructed.shape}, act.shape: {act.shape}")
-            act_loss = self.emb_criterion(act_reconstructed, act)
+            act_loss = self.emb_criterion(act_reconstructed, act[:, :-1, :])
             loss_components["act_loss"] = act_loss
             loss = loss + act_loss
         else:
             visual_reconstructed = None
-
-        if self.action_decoder is not None:
-            _, _, u_hist = self.separate_emb(z)
-            self.print(f"DECODING ACTION FROM EMB SHAPE: {u_hist.shape}")
-            act_reconstructed = self.decode_act(u_hist[:, :, -1, :]) # (b, num_frames, action_dim)
-            self.print(f"act_reconstructed.shape: {act_reconstructed.shape}, act.shape: {act.shape}")
-            act_loss = self.emb_criterion(act_reconstructed, act[:, :-1, :])
-            loss = loss + act_loss
-            loss_components["act_loss"] = act_loss
 
         loss_components["loss"] = loss
         return z_pred, visual_pred, visual_reconstructed, loss, loss_components
@@ -402,34 +391,66 @@ class VWorldModel(nn.Module):
         num_obs_init = obs_0['visual'].shape[1]
         act_0 = act[:, :num_obs_init+1]
         action = act[:, num_obs_init+1:]
+        # prepend the last action of act_0 as this is the action at the current time step
+        # and therefore the first action that needs to be taken!
+        action = torch.cat([act_0[:, -1:], action], dim=1)
         self.print(f"obs_0['visual'].shape: {obs_0['visual'].shape}, obs_0['proprio'].shape: {obs_0['proprio'].shape}, act_0.shape: {act_0.shape}")
         o, z, u = self.encode(obs_0, act_0)
         self.print(f"Initial o.shape: {o.shape}, z.shape: {z.shape}, u.shape: {u.shape}, action.shape: {action.shape}")
         t = 0
-        inc = 1
         while t < action.shape[1]:
             self.print(f"\nRollout at time step {t}/{action.shape[1]}")
-            u_now = self.encode_act(action[:, t : t + inc, :])
+            u_now = self.encode_act(action[:, t : t + 1, :])
             self.print(f"what goes in: z.shape: {z[:, -self.num_hist:].shape}, u_now.shape: {u_now.shape}")
+            self.print(f"u_now: {u_now}")
             z_pred, _ = self.predict(z[:, -self.num_hist:], u_now)
-            z_new = z_pred[:, -inc:, ...]
-            u_new = u[:, t : t + inc, ...]
+            z_new = z_pred[:, -1:, ...]
 
             z = torch.cat([z, z_new], dim=1)
-            print(f"Rollout step {t}: z.shape: {z.shape}, u.shape: {u.shape}")
-            t += inc
+            self.print(f"Rollout step {t}: z.shape: {z.shape}")
+            t += 1
 
-        # final predict
-        z_pred, _ = self.predict(z[:, -self.num_hist :], u[:, -self.num_hist :])
-        z_new = z_pred[:, -1 :, ...] # take only the next pred
-        u_new = u[:, -1 :, ...]
-
-        z = torch.cat([z, z_new], dim=1)
-        u = torch.cat([u, u_new], dim=1)
-
-        self.print(f"Final z.shape: {z.shape}, u.shape: {u.shape}")
+        self.print(f"Final z.shape: {z.shape}")
         # z requires u appended in separate_emb because of the concatenated u_hist
         o, p, u_hist = self.separate_emb(z)
         obss = {'visual': o, 'proprio': p}
-        return obss, z # TODO: add u to z_obses to analyze it later..
 
+        # raise NotImplementedError("rollout decoding not implemented yet")
+        return obss, z # TODO: add u to z_obses to analyze it later..
+    
+    def take_step(self, obs, act):
+        """
+        Take a step in the environment. The final action in act
+        is considered to be the current control input.
+        """
+        self.print(f"\n\nVWorldModel take_step:")
+        self.print(f"obs['visual'].shape: {obs['visual'].shape}, obs['proprio'].shape: {obs['proprio'].shape}, act.shape: {act.shape}")
+        if obs['visual'].shape[1] == act.shape[1]:
+            # if obs and act dimension match, remove the first observation
+            # such that later we can append n_hist-1 actions
+            obs['visual'] = obs['visual'][:, 1:, ...]
+            obs['proprio'] = obs['proprio'][:, 1:, ...]
+        act_0 = act[:, :-1, ...]
+        act_now = act[:, -1:, ...]
+        self.print(f"obs['visual'].shape: {obs['visual'].shape}, obs['proprio'].shape: {obs['proprio'].shape}, act_0.shape: {act_0.shape}, act_now.shape: {act_now.shape}")
+
+        # Encode the observations, action history, and current action
+        o, z, u = self.encode(obs, act)
+        u_now = self.encode_act(act_now)
+
+        # Take the step in the latent space
+        z_pred, dz_pred = self.predict(z[:, -self.num_hist :], u_now)
+        obs_pred, _, _ = self.decode(
+            z_pred,
+            u_now
+        )  # recon loss should only affect decoder
+        return obs_pred, z_pred, dz_pred
+    
+    def get_fz_gz(self, obs, act):
+        assert obs['visual'].shape[1] == act.shape[1], "obs and act must have the same number of frames"
+        act_0 = torch.zeros_like(act[:, -1:, ...])
+        o, z, u = self.encode(obs, act_0)
+
+        fz = self.predictor.get_fz(z)
+        gz = self.predictor.get_gz(z)
+        return fz, gz

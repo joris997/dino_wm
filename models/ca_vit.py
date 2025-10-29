@@ -102,25 +102,40 @@ class ViTPredictor(nn.Module):
                 depth, heads, mlp_dim, pool='cls', dim_head=64, dropout=0., emb_dropout=0.):
         super().__init__()
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+        self.debug = False
         
         # update params for adding causal attention masks
         global NUM_FRAMES, NUM_PATCHES
         NUM_FRAMES = num_frames
         NUM_PATCHES = num_patches
-        print(f"ViTPredictor constructor:")
-        print(f"num_frames={num_frames}, num_patches={num_patches}, dim={dim}, depth={depth}, heads={heads}, mlp_dim={mlp_dim}")
+        self.print(f"ViTPredictor constructor:")
+        self.print(f"num_frames={num_frames}, num_patches={num_patches}, dim={dim}, depth={depth}, heads={heads}, mlp_dim={mlp_dim}")
         self.dim = dim
         self.action_dim = action_dim
 
         self.pos_embedding = nn.Parameter(torch.randn(1, num_frames * (num_patches), dim)) # dim for the pos encodings
         self.dropout = nn.Dropout(emb_dropout)
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        
         # fz of size dim, gz matrix of size (dim, u_dim)
         self.to_fz = nn.Linear(self.dim, self.dim)
-        self.to_gz = nn.Linear(self.dim, self.dim*self.action_dim)
+        self.to_gz = nn.Linear(self.dim, self.dim)
+        hidden = mlp_dim
+        self.fz_net = nn.Sequential(
+            nn.LayerNorm(self.dim),
+            nn.Linear(self.dim, hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, self.dim)
+        )
+        self.gz_net = nn.Sequential(
+            nn.LayerNorm(self.dim),
+            nn.Linear(self.dim, hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, self.dim * self.action_dim)
+        )
         self.pool = pool
-    
-        self.debug = False
     
     def print(self, *args):
         if self.debug:
@@ -148,6 +163,8 @@ class ViTPredictor(nn.Module):
         # dz = f(z) + g(z)*u_now
         fz = self.to_fz(x)  # (b, num_hist * num_patches per img, dim)
         gz = self.to_gz(x)  # (b, num_hist * num_patches per img, dim * action_dim)
+        fz = self.fz_net(fz)
+        gz = self.gz_net(gz)
         # repeat u_now 3 times to go from [16,196,10] to [16,588,10]
         u_now = repeat(u_now, 'b p d -> b (t p) d', t=t, p=p)  # (b, num_hist * num_patches per img, action_dim)
         self.print(f"fz.shape: {fz.shape}, gz.shape: {gz.shape}, u_now.shape: {u_now.shape}")
@@ -160,3 +177,26 @@ class ViTPredictor(nn.Module):
         dz = fz + gz_u  # (b, num_hist * num_patches per img, dim)
         self.print(f"dz.shape (final output): {dz.shape}\n")
         return dz
+    
+    def get_fz(self, x):
+        b, n, e = x.shape
+
+        x = x + self.pos_embedding[:, :n]
+        x = self.dropout(x)
+        x = self.transformer(x)
+
+        fz = self.to_fz(x)  # (b, num_hist * num_patches per img, dim)
+        fz = self.fz_net(fz)
+        return fz
+    
+    def get_gz(self, x):
+        b, n, e = x.shape
+
+        x = x + self.pos_embedding[:, :n]
+        x = self.dropout(x)
+        x = self.transformer(x)
+
+        gz = self.to_gz(x)  # (b, num_hist * num_patches per img, dim * action_dim)
+        gz = self.gz_net(gz)
+        gz = rearrange(gz, 'b n (d u) -> b n d u', u=self.action_dim)  # (b, num_hist * num_patches per img, dim, action_dim)
+        return gz

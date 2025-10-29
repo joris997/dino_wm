@@ -1,7 +1,7 @@
 # env import
-import gym
+import gymnasium as gym
 import einops
-from gym import spaces
+from gymnasium import spaces
 from pymunk.space_debug_draw_options import SpaceDebugColor
 from pymunk.vec2d import Vec2d
 from typing import Tuple, Sequence, Dict, Union, Optional
@@ -629,7 +629,8 @@ class PushTEnv(gym.Env):
 
             # the clock is already ticked during in step for "human"
 
-        img = np.transpose(np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2))
+        # img = np.transpose(np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2))
+        img = pygame.surfarray.array3d(canvas).copy().transpose((1, 0, 2))
         img = cv2.resize(img, (self.render_size, self.render_size))
         if self.render_action:
             if self.render_action and (self.latest_action is not None):

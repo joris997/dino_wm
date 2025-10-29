@@ -600,8 +600,8 @@ class Trainer:
             loss_components = {f"train_{k}": [v] for k, v in loss_components.items()}
             self.logs_update(loss_components)
 
-            # if i >= 2:
-            #     break
+            if i >= 2:
+                break
 
     def val(self):
         self.print("\n\nVALIDATING")

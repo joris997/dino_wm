@@ -47,7 +47,7 @@ class ProprioceptiveEmbedding(nn.Module):
         use_3d_pos=False # always False for now
     ):
         super().__init__()
-        print(f'using 3d prop position {use_3d_pos=}')
+        # print(f'using 3d prop position {use_3d_pos=}')
 
         # Map input to predictor dimension
         self.num_frames = num_frames

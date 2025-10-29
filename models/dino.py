@@ -4,8 +4,11 @@ import torch.nn as nn
 torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
 
 # TODO: do this the nice way with hydra
-REPO_DIR = "/home/joris/gits/dinov3"
-WEIGHTS  = "/home/joris/checkpoints/dinov3_vits16_pretrain_lvd1689m-08c60483.pth"
+# get user directory
+import os
+USER_DIR = os.path.expanduser("~")
+REPO_DIR = os.path.join(USER_DIR, "gits", "dinov3")
+WEIGHTS  = os.path.join(USER_DIR, "checkpoints", "dinov3_vits16_pretrain_lvd1689m-08c60483.pth")
 
 class DinoV2Encoder(nn.Module):
     def __init__(self, name, feature_key):

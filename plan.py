@@ -351,7 +351,9 @@ class PlanWorkspace:
 
 
 def load_ckpt(snapshot_path, device):
+    print(f"Loading model checkpoint from {snapshot_path} to {device}")
     with snapshot_path.open("rb") as f:
+        print(f"Loading checkpoint from {f}")
         payload = torch.load(f, map_location=device)
     loaded_keys = []
     result = {}
