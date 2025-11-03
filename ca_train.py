@@ -169,7 +169,7 @@ class Trainer:
         self._keys_to_save += (
             ["decoder"] if self.train_decoder else []
         )
-        self._keys_to_save += ["action_encoder", "proprio_encoder"]
+        self._keys_to_save += ["action_encoder", "proprio_encoder", "action_decoder"]
 
         self.init_models()
         self.init_optimizers()
@@ -600,8 +600,8 @@ class Trainer:
             loss_components = {f"train_{k}": [v] for k, v in loss_components.items()}
             self.logs_update(loss_components)
 
-            if i >= 2:
-                break
+            # if i >= 2:
+            #     break
 
     def val(self):
         self.print("\n\nVALIDATING")

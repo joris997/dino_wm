@@ -20,7 +20,8 @@ from preprocessor import Preprocessor
 from utils import load_vit
 
 folder = '/home/none/gits/dino_wm/outputs'
-run = '2025-10-27/16-34-58'
+# run = '2025-10-27/16-34-58'
+run = '2025-10-30/12-24-13'
 ckpt_folder = os.path.join(folder, run)
 
 # world model
@@ -57,6 +58,17 @@ obs_skip = {
 obs0 = {'visual': obs_skip['visual'][:,:cfg.num_hist-1,...],
         'proprio': obs_skip['proprio'][:,:cfg.num_hist-1,...]}
 act0 = torch.zeros((1, cfg.num_hist-1, cfg.frameskip*env.action_space.shape[0]),device='cuda')
+# try where act0 is frameskip times act[0]
+act0 = act[0 : (cfg.num_hist-1)*cfg.frameskip,:].reshape(cfg.num_hist-1, 2*cfg.frameskip).unsqueeze(0)
+act0 = act0.to('cuda')
+
+# plot the obs_skip['visual'] to see what we have
+fig, axs = plt.subplots(1, obs_skip['visual'].shape[1], figsize=(15, 5))
+for i in range(obs_skip['visual'].shape[1]):
+    axs[i].imshow(obs_skip['visual'][0,i].permute(1, 2, 0).cpu().numpy())
+    axs[i].axis("off")
+plt.suptitle("Initial visual observations with frameskip")
+plt.show()
 
 # now loop through the dataset and create frameskip control input
 fig, axs = plt.subplots(1, 2, figsize=(8, 4))
@@ -81,16 +93,18 @@ for i in range(0,int(100/cfg.frameskip)):
 
     # take the step in the world model
     with torch.no_grad():
-        obs_pred, z_pred, dz_pred = world_model.take_step(obsi_hist, acti_hist)
+        obs_pred, z_pred, dz_pred, obs_now = world_model.take_step(obsi_hist, acti_hist)
 
     # plotting 
     axs[0].imshow(image)
     axs[0].axis("off")
-    obs_pred_vis = obs_pred['visual'].cpu().detach()
+    obs_pred_vis = obs_now['visual'].cpu().detach()
     axs[1].imshow(obs_pred_vis[0,-1].permute(1, 2, 0).cpu().numpy())
     axs[1].axis("off")
     plt.suptitle(f"Step {i}: Real | Predicted | Reconstructed")
-    plt.pause(0.5)
+    plt.draw()
+    plt.waitforbuttonpress()
+    # plt.pause(1.0)
 
     # update history
     # TODO: proprioception decoder?

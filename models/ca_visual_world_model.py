@@ -444,7 +444,12 @@ class VWorldModel(nn.Module):
             z_pred,
             u_now
         )  # recon loss should only affect decoder
-        return obs_pred, z_pred, dz_pred
+
+        obs_now, _, _ = self.decode(
+            z_pred[:, -self.num_hist:, :],
+            u_now
+        )  # recon loss should only affect decoder
+        return obs_pred, z_pred, dz_pred, obs_now
     
     def get_fz_gz(self, obs, act):
         assert obs['visual'].shape[1] == act.shape[1], "obs and act must have the same number of frames"

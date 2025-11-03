@@ -146,8 +146,8 @@ def load_vit(checkpoint_folder:str):
                                             tubelet_size=cfg.action_decoder.tubelet_size,
                                             out_chans=10,
                                             emb_dim=cfg.action_emb_dim)
-    action_decoder.load_state_dict(payload['action_decoder'].state_dict())
-    action_decoder.eval()
+    # action_decoder.load_state_dict(payload['action_decoder'].state_dict())
+    # action_decoder.eval()
 
     #! create decoder
     decoder = VQVAE(channel=cfg.decoder.channel,
@@ -161,7 +161,7 @@ def load_vit(checkpoint_folder:str):
 
     #! create world model
     predictor = ViTPredictor(num_patches=196,
-                            num_frames=cfg.num_hist,
+                            num_frames=cfg.num_hist-1,
                             dim=404,
                             action_dim=cfg.action_emb_dim,
                             depth=cfg.predictor.depth,
