@@ -71,7 +71,7 @@ model:
   train_decoder: True
   train_action_decoder: True
 
-debug: True
+debug: False
 
 # Planning params for planning eval jobs launched during training
 plan_settings: 
