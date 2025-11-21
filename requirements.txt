@@ -2,8 +2,6 @@
 # $ conda create --name <env> --file <this file>
 # platform: linux-64
 # created-by: conda 25.7.0
-_libgcc_mutex=0.1=conda_forge
-_openmp_mutex=4.5=2_gnu
 absl-py=2.1.0=pypi_0
 accelerate=0.26.1=pypi_0
 antlr4-python3-runtime=4.9.3=pypi_0

@@ -17,3 +17,5 @@ dataset:
 
 decoder_path: null
 num_workers: 16
+persistent_workers: false 
+pin_memory: false

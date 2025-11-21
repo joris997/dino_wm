@@ -57,7 +57,7 @@ class Trainer:
             torch.distributed.barrier()
             # # ==== /init ddp process group ====
 
-        self.accelerator = Accelerator(log_with="wandb")
+        self.accelerator = Accelerator(log_with="wandb", mixed_precision=cfg.training.precision)
         log.info(
             f"rank: {self.accelerator.local_process_index}  model_name: {model_name}"
         )
@@ -128,6 +128,8 @@ class Trainer:
                 batch_size=self.cfg.gpu_batch_size,
                 shuffle=False, # already shuffled in TrajSlicerDataset
                 num_workers=self.cfg.env.num_workers,
+                pin_memory=self.cfg.env.pin_memory,
+                persistent_workers=self.cfg.env.persistent_workers,
                 collate_fn=None,
             )
             for x in ["train", "valid"]
@@ -169,7 +171,7 @@ class Trainer:
         self._keys_to_save += (
             ["decoder"] if self.train_decoder else []
         )
-        self._keys_to_save += ["action_encoder", "proprio_encoder", "action_decoder"]
+        self._keys_to_save += ["action_encoder", "proprio_encoder"]
 
         self.init_models()
         self.init_optimizers()
@@ -273,7 +275,7 @@ class Trainer:
                 self.predictor = hydra.utils.instantiate(
                     self.cfg.predictor,
                     num_patches=num_patches,
-                    num_frames=self.cfg.num_hist,
+                    num_frames=self.cfg.num_hist-1,
                     dim=self.encoder.emb_dim
                     + (
                         proprio_emb_dim * self.cfg.num_proprio_repeat
@@ -499,7 +501,9 @@ class Trainer:
         ):
             self.print("\n\n\nTRAINING BATCH", i)
             obs, act, state = data
-            plot = i == 0  # only plot from the first batch
+            # plot = i == 0  # only plot from the first batch
+            # plot every 5000
+            plot = i % 5000 == 0
             self.model.train()
             z_out, visual_out, visual_reconstructed, loss, loss_components = self.model(
                 obs, act
@@ -600,8 +604,8 @@ class Trainer:
             loss_components = {f"train_{k}": [v] for k, v in loss_components.items()}
             self.logs_update(loss_components)
 
-            # if i >= 2:
-            #     break
+            #if i >= 20:
+            #    break
 
     def val(self):
         self.print("\n\nVALIDATING")
