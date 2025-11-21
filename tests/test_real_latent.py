@@ -27,7 +27,7 @@ ckpt_folder = os.path.join(folder, run)
 # world model
 world_model, cfg = load_vit(ckpt_folder)
 world_model.to('cuda')
-cfg.debug = True
+cfg.debug = False
 
 # dataset
 dataset = PushTDataset(n_rollout=50,
@@ -63,17 +63,27 @@ act0 = act[0 : (cfg.num_hist-1)*cfg.frameskip,:].reshape(cfg.num_hist-1, 2*cfg.f
 act0 = act0.to('cuda')
 
 # plot the obs_skip['visual'] to see what we have
-fig, axs = plt.subplots(1, obs_skip['visual'].shape[1], figsize=(15, 5))
-for i in range(obs_skip['visual'].shape[1]):
-    axs[i].imshow(obs_skip['visual'][0,i].permute(1, 2, 0).cpu().numpy())
-    axs[i].axis("off")
-plt.suptitle("Initial visual observations with frameskip")
-plt.show()
+# fig, axs = plt.subplots(1, obs_skip['visual'].shape[1], figsize=(15, 5))
+# for i in range(obs_skip['visual'].shape[1]):
+#     axs[i].imshow(obs_skip['visual'][0,i].permute(1, 2, 0).cpu().numpy())
+#     axs[i].axis("off")
+# plt.suptitle("Initial visual observations with frameskip")
+# plt.show()
 
 # now loop through the dataset and create frameskip control input
 fig, axs = plt.subplots(1, 2, figsize=(8, 4))
 obsi_hist, acti_hist = obs0, act0
 print(f"obsi_hist.shape: {obsi_hist['visual'].shape}, acti_hist.shape: {acti_hist.shape}")
+
+# plotting 
+# # axs[0].imshow(image)
+# axs[0].axis("off")
+# obs_pred_vis = obsi_hist['visual'].cpu().detach()
+# axs[1].imshow(obs_pred_vis[0,-1].permute(1, 2, 0).cpu().numpy())
+# axs[1].axis("off")
+# plt.suptitle(f"Step {0}: Real | Predicted | Reconstructed")
+# plt.draw()
+# plt.waitforbuttonpress()
 
 for i in range(0,int(100/cfg.frameskip)):
     acti = act[i*cfg.frameskip : (i+1)*cfg.frameskip,:]
@@ -84,11 +94,12 @@ for i in range(0,int(100/cfg.frameskip)):
         observation, _, _, _ = env.step(a)
     image = env.render('rgb_array')
 
+    # take the next step
     # make right shape and set to cuda
     acti = acti.reshape(1, -1)          # reshape to (1, frameskip * action_dim)
     acti_hist = torch.cat([acti_hist, torch.tensor(acti, device='cuda').unsqueeze(1)], dim=1)
     print(f"acti.shape after reshape: {acti.shape}")
-    obsi_hist = {'visual': obsi_hist['visual'].to('cuda'), 'proprio': obsi_hist['proprio'].to('cuda')}
+    obsi_hist = {key: value.to('cuda') for key, value in obsi_hist.items()}
     acti_hist = acti_hist.to('cuda')
 
     # take the step in the world model
@@ -104,7 +115,6 @@ for i in range(0,int(100/cfg.frameskip)):
     plt.suptitle(f"Step {i}: Real | Predicted | Reconstructed")
     plt.draw()
     plt.waitforbuttonpress()
-    # plt.pause(1.0)
 
     # update history
     # TODO: proprioception decoder?

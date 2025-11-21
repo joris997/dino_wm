@@ -116,22 +116,22 @@ class ViTPredictor(nn.Module):
         self.pos_embedding = nn.Parameter(torch.randn(1, num_frames * (num_patches), dim)) # dim for the pos encodings
         self.dropout = nn.Dropout(emb_dropout)
 
-        # self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
-        self.transformer_f = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
-        self.transformer_g = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        # self.transformer_f = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        # self.transformer_g = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
         
         # fz of size dim, gz matrix of size (dim, u_dim)
         self.to_fz = nn.Linear(self.dim, self.dim)
         self.to_gz = nn.Linear(self.dim, self.dim)
         hidden = mlp_dim
-        self.fz_head = nn.Sequential(
+        self.fz_net = nn.Sequential(
             nn.LayerNorm(self.dim),
             nn.Linear(self.dim, hidden),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden, self.dim)
         )
-        self.gz_head = nn.Sequential(
+        self.gz_net = nn.Sequential(
             nn.LayerNorm(self.dim),
             nn.Linear(self.dim, hidden),
             nn.GELU(),
@@ -158,18 +158,17 @@ class ViTPredictor(nn.Module):
         #? x size: [b, num_hist * num_patches, embedding dim + actions_hist]
         x = x + self.pos_embedding[:, :n]
         x = self.dropout(x) 
-        # x = self.transformer(x)
 
-        xf = self.transformer_f(x)
-        xg = self.transformer_g(x)
-
+        x = self.transformer(x)
+        # xf = self.transformer_f(x)
+        # xg = self.transformer_g(x)
 
         self.print(f"x.shape (after transformer): {x.shape}")
         #? size: [b, num_hist * num_patches, embedding dim + actions_hist]
         # plot x into two to get f(z) and g(z) so later we can compute
         # dz = f(z) + g(z)*u_now
-        fz = self.fz_head(xf)
-        gz = self.gz_head(xg)
+        fz = self.fz_net(self.to_fz(x))
+        gz = self.gz_net(self.to_gz(x))
         # repeat u_now 3 times to go from [16,196,10] to [16,588,10]
         u_now = repeat(u_now, 'b p d -> b (t p) d', t=t, p=p)  # (b, num_hist * num_patches per img, action_dim)
         self.print(f"fz.shape: {fz.shape}, gz.shape: {gz.shape}, u_now.shape: {u_now.shape}")
@@ -188,9 +187,9 @@ class ViTPredictor(nn.Module):
 
         x = x + self.pos_embedding[:, :n]
         x = self.dropout(x)
-        x = self.transformer_f(x)
+        x = self.transformer(x)
 
-        fz = self.fz_head(x)
+        fz = self.fz_head(self.to_fz(x))
         return fz
     
     def get_gz(self, x):
@@ -198,8 +197,8 @@ class ViTPredictor(nn.Module):
 
         x = x + self.pos_embedding[:, :n]
         x = self.dropout(x)
-        x = self.transformer_g(x)
+        x = self.transformer(x)
 
-        gz = self.gz_head(x)
+        gz = self.gz_head(self.to_gz(x))
         gz = rearrange(gz, 'b n (d u) -> b n d u', u=self.action_dim)  # (b, num_hist * num_patches per img, dim, action_dim)
         return gz
