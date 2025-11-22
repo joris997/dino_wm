@@ -78,6 +78,58 @@ class Attention(nn.Module):
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
+        
+class SplitAttention(nn.Module):
+    def __init__(self, dim, heads_f=4, heads_g=4, dim_head = 64, dropout = 0.):
+        super().__init__()
+        self.heads_f = heads_f
+        self.heads_g = heads_g
+        self.total_heads = self.heads_f + self.heads_g
+        
+        inner_dim = dim_head *  self.total_heads
+        project_out = not (self.total_heads == 1 and dim_head == dim)
+
+        self.scale = dim_head ** -0.5
+        self.norm = nn.LayerNorm(dim)
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        
+        self.to_out_f = nn.Sequential(
+            nn.Linear(dim_head * self.heads_f, dim),
+            nn.Dropout(dropout)
+        )
+        self.to_out_g = nn.Sequential(
+			nn.Linear(dim_head * self.heads_g, dim),
+			nn.Dropout(dropout)
+        )
+        
+        # causal mask
+        self.bias = generate_mask_matrix(NUM_PATCHES, NUM_FRAMES).to('cuda')
+
+    def forward(self, x):
+        B, T, C = x.size()
+        x = self.norm(x)
+
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.total_heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+        dots = dots.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out_f = out[:,:self.heads_f]
+        out_g = out[:,self.heads_f:]
+        
+        out_f = rearrange(out_f, 'b h n d -> b n (h d)')
+        out_g = rearrange(out_g, 'b h n d -> b n (h d)')
+		
+        out_f = self.to_out_f(out_f)
+        out_g = self.to_out_g(out_g)
+        return out_f, out_g
 
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
@@ -94,8 +146,28 @@ class Transformer(nn.Module):
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
-
         return self.norm(x)
+        
+class SplitTransformer(nn.Module):
+    def __init__(self, dim, depth, heads_f, heads_g, dim_head, mlp_dim, dropout = 0.):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                SplitAttention(dim, heads_f=heads_f, heads_g=heads_g, dim_head = dim_head, dropout = dropout),
+                FeedForward(dim, mlp_dim, dropout = dropout)
+            ]))
+
+    def forward(self, x):
+        f,g = x, x      
+        for attn, ff in self.layers:
+            f_attn, g_attn = attn(x)
+            f = f + f_attn
+            g = g + g_attn
+            f = f + ff(f)
+            g = g + ff(g)
+        return self.norm(f), self.norm(g)
     
 class ViTPredictor(nn.Module):
     def __init__(self, *, num_patches, num_frames, dim, action_dim,
@@ -116,9 +188,12 @@ class ViTPredictor(nn.Module):
         self.pos_embedding = nn.Parameter(torch.randn(1, num_frames * (num_patches), dim)) # dim for the pos encodings
         self.dropout = nn.Dropout(emb_dropout)
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        # self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
         # self.transformer_f = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
         # self.transformer_g = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        heads_f = heads // 2
+        heads_g = heads - heads_f
+        self.transformer = SplitTransformer(dim, depth, heads_f, heads_g, dim_head, mlp_dim, dropout)
         
         # fz of size dim, gz matrix of size (dim, u_dim)
         self.to_fz = nn.Linear(self.dim, self.dim)
@@ -158,10 +233,12 @@ class ViTPredictor(nn.Module):
         #? x size: [b, num_hist * num_patches, embedding dim + actions_hist]
         x = x + self.pos_embedding[:, :n]
         x = self.dropout(x) 
-
-        x = self.transformer(x)
+        
+        # x = self.transformer(x)
         # xf = self.transformer_f(x)
         # xg = self.transformer_g(x)
+        xf, xg = self.transformer(x)
+
 
         self.print(f"x.shape (after transformer): {x.shape}")
         #? size: [b, num_hist * num_patches, embedding dim + actions_hist]
