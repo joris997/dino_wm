@@ -604,7 +604,7 @@ class Trainer:
             loss_components = {f"train_{k}": [v] for k, v in loss_components.items()}
             self.logs_update(loss_components)
 
-            #if i >= 20:
+            #if i >= 1000:
             #    break
 
     def val(self):

@@ -401,9 +401,9 @@ class VWorldModel(nn.Module):
         while t < action.shape[1]:
             self.print(f"\nRollout at time step {t}/{action.shape[1]}")
             u_now = self.encode_act(action[:, t : t + 1, :])
-            self.print(f"what goes in: z.shape: {z[:, -self.num_hist:].shape}, u_now.shape: {u_now.shape}")
+            self.print(f"what goes in: z.shape: {z[:, -self.local_hist:].shape}, u_now.shape: {u_now.shape}")
             self.print(f"u_now: {u_now}")
-            z_pred, _ = self.predict(z[:, -self.num_hist:], u_now)
+            z_pred, _ = self.predict(z[:, -self.local_hist:], u_now)
             z_new = z_pred[:, -1:, ...]
 
             z = torch.cat([z, z_new], dim=1)
