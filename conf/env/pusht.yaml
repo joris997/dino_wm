@@ -16,6 +16,6 @@ dataset:
     img_size: ${img_size}
 
 decoder_path: null
-num_workers: 64
-persistent_workers: false 
-pin_memory: false
+num_workers: 32
+persistent_workers: true
+pin_memory: true

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#SBATCH --gres gpu:6
-#SBATCH --mem 48GB
+#SBATCH --gres gpu:4
+#SBATCH --mem 40GB
 #SBATCH --cpus-per-task 32
 #SBATCH --time 48:00:00
 #SBATCH --constrain "arwen"
@@ -16,4 +16,4 @@ export WANDB_API_KEY="c9e67cdc7592d355713d3d450dc3b74f925141ce"
 cd /Midgard/home/jorisv/gits/dino_wm
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/Midgard/home/jorisv/miniforge3
 
-$PYTHON ca_train.py env=pusht
+$PYTHON -m torch.distributed.run --nproc_per_node=4 ca_train.py --config-name ca_train.yaml env=pusht
