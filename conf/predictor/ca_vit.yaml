@@ -1,6 +1,6 @@
 _target_: models.ca_vit.ViTPredictor
-depth: 6
-heads: 16
+depth: 4 # old depth: 6
+heads: 8 # old heads: 16
 mlp_dim: 2048
 dropout: 0.1
 emb_dropout: 0

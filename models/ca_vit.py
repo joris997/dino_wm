@@ -85,40 +85,42 @@ class SplitAttention(nn.Module):
         self.heads_f = heads_f
         self.heads_g = heads_g
         self.total_heads = self.heads_f + self.heads_g
-        
-        inner_dim = dim_head *  self.total_heads
-        project_out = not (self.total_heads == 1 and dim_head == dim)
+        self.dim_head = dim_head
+        inner_dim = self.dim_head *  self.total_heads
+
+
+        self.to_q = nn.Linear(dim, inner_dim, bias = False)
+        self.to_k = nn.Linear(dim, inner_dim,  bias = False)
+        self.to_v = nn.Linear(dim, inner_dim,  bias = False)
+        self.norm = nn.LayerNorm(dim)
 
         self.scale = dim_head ** -0.5
-        self.norm = nn.LayerNorm(dim)
-        self.attend = nn.Softmax(dim = -1)
         self.dropout = nn.Dropout(dropout)
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
         
-        self.to_out_f = nn.Sequential(
-            nn.Linear(dim_head * self.heads_f, dim),
-            nn.Dropout(dropout)
-        )
-        self.to_out_g = nn.Sequential(
-			nn.Linear(dim_head * self.heads_g, dim),
-			nn.Dropout(dropout)
-        )
+        self.to_out_f = nn.Linear(dim_head * self.heads_f, dim)
+        self.to_out_g = nn.Linear(dim_head * self.heads_g, dim)
         
         # causal mask
-        self.bias = generate_mask_matrix(NUM_PATCHES, NUM_FRAMES).to('cuda')
+        self.register_buffer('bias', generate_mask_matrix(NUM_PATCHES, NUM_FRAMES))
 
     def forward(self, x):
         B, T, C = x.size()
         x = self.norm(x)
 
-        qkv = self.to_qkv(x).chunk(3, dim = -1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.total_heads), qkv)
+        q = rearrange(self.to_q(x), 'b n (h d) -> b h n d', h = self.total_heads)
+        k = rearrange(self.to_k(x), 'b n (h d) -> b h n d', h = self.total_heads)
+        v = rearrange(self.to_v(x), 'b n (h d) -> b h n d', h = self.total_heads)
 
-        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
-        dots = dots.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
+        dots = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
 
-        attn = self.attend(dots)
+        # avoid all -inf rows
+        causal_mask = self.bias[:, :, :T, :T]
+        dots = dots.masked_fill(causal_mask == 0, float("-inf"))
+
+        attn = torch.softmax(dots, dim=-1)
         attn = self.dropout(attn)
+
+        out = torch.einsum('b h i j, b h j d -> b h i d', attn, v)
 
         out = torch.matmul(attn, v)
         out_f = out[:,:self.heads_f]
@@ -126,10 +128,7 @@ class SplitAttention(nn.Module):
         
         out_f = rearrange(out_f, 'b h n d -> b n (h d)')
         out_g = rearrange(out_g, 'b h n d -> b n (h d)')
-		
-        out_f = self.to_out_f(out_f)
-        out_g = self.to_out_g(out_g)
-        return out_f, out_g
+        return self.to_out_f(out_f), self.to_out_g(out_g)
 
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
@@ -156,18 +155,21 @@ class SplitTransformer(nn.Module):
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 SplitAttention(dim, heads_f=heads_f, heads_g=heads_g, dim_head = dim_head, dropout = dropout),
+                FeedForward(dim, mlp_dim, dropout = dropout),
                 FeedForward(dim, mlp_dim, dropout = dropout)
             ]))
+        self.norm_f = nn.LayerNorm(dim)
+        self.norm_g = nn.LayerNorm(dim)
 
     def forward(self, x):
         f,g = x, x      
         for attn, ff in self.layers:
             f_attn, g_attn = attn(x)
-            f = f + f_attn
-            g = g + g_attn
-            f = f + ff(f)
-            g = g + ff(g)
-        return self.norm(f), self.norm(g)
+            f = f + 0.5*f_attn
+            g = g + 0.5*g_attn
+            f = f + 0.5*ff(f)
+            g = g + 0.5*ff(g)
+        return self.norm_f(f), self.norm_g(g)
     
 class ViTPredictor(nn.Module):
     def __init__(self, *, num_patches, num_frames, dim, action_dim,
@@ -185,19 +187,14 @@ class ViTPredictor(nn.Module):
         self.dim = dim
         self.action_dim = action_dim
 
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_frames * (num_patches), dim)) # dim for the pos encodings
+        self.pos_embedding = nn.Parameter(0.05*torch.randn(1, num_frames * (num_patches), dim)) # dim for the pos encodings
         self.dropout = nn.Dropout(emb_dropout)
 
-        # self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
-        # self.transformer_f = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
-        # self.transformer_g = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
         heads_f = heads // 2
         heads_g = heads - heads_f
         self.transformer = SplitTransformer(dim, depth, heads_f, heads_g, dim_head, mlp_dim, dropout)
         
         # fz of size dim, gz matrix of size (dim, u_dim)
-        #self.to_fz = nn.Linear(self.dim, self.dim)
-        #self.to_gz = nn.Linear(self.dim, self.dim)
         hidden = mlp_dim
         self.fz_net = nn.Sequential(
             nn.LayerNorm(self.dim),
@@ -234,18 +231,14 @@ class ViTPredictor(nn.Module):
         x = x + self.pos_embedding[:, :n]
         x = self.dropout(x) 
         
-        # x = self.transformer(x)
-        # xf = self.transformer_f(x)
-        # xg = self.transformer_g(x)
         xf, xg = self.transformer(x)
-
 
         self.print(f"x.shape (after transformer): {x.shape}")
         #? size: [b, num_hist * num_patches, embedding dim + actions_hist]
         # plot x into two to get f(z) and g(z) so later we can compute
         # dz = f(z) + g(z)*u_now
-        fz = self.fz_net(self.to_fz(x))
-        gz = self.gz_net(self.to_gz(x))
+        fz = self.fz_net(xf)
+        gz = self.gz_net(xg)
         # repeat u_now 3 times to go from [16,196,10] to [16,588,10]
         u_now = repeat(u_now, 'b p d -> b (t p) d', t=t, p=p)  # (b, num_hist * num_patches per img, action_dim)
         self.print(f"fz.shape: {fz.shape}, gz.shape: {gz.shape}, u_now.shape: {u_now.shape}")
@@ -264,9 +257,9 @@ class ViTPredictor(nn.Module):
 
         x = x + self.pos_embedding[:, :n]
         x = self.dropout(x)
-        x = self.transformer(x)
+        xf, xg = self.transformer(x)
 
-        fz = self.fz_head(self.to_fz(x))
+        fz = self.fz_net(xf)
         return fz
     
     def get_gz(self, x):
@@ -274,8 +267,8 @@ class ViTPredictor(nn.Module):
 
         x = x + self.pos_embedding[:, :n]
         x = self.dropout(x)
-        x = self.transformer(x)
+        xf, xg = self.transformer(x)
 
-        gz = self.gz_head(self.to_gz(x))
+        gz = self.gz_net(xg)
         gz = rearrange(gz, 'b n (d u) -> b n d u', u=self.action_dim)  # (b, num_hist * num_patches per img, dim, action_dim)
         return gz
