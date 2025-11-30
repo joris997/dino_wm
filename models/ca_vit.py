@@ -196,8 +196,8 @@ class ViTPredictor(nn.Module):
         self.transformer = SplitTransformer(dim, depth, heads_f, heads_g, dim_head, mlp_dim, dropout)
         
         # fz of size dim, gz matrix of size (dim, u_dim)
-        self.to_fz = nn.Linear(self.dim, self.dim)
-        self.to_gz = nn.Linear(self.dim, self.dim)
+        #self.to_fz = nn.Linear(self.dim, self.dim)
+        #self.to_gz = nn.Linear(self.dim, self.dim)
         hidden = mlp_dim
         self.fz_net = nn.Sequential(
             nn.LayerNorm(self.dim),
