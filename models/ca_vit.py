@@ -163,12 +163,12 @@ class SplitTransformer(nn.Module):
 
     def forward(self, x):
         f,g = x, x      
-        for attn, ff in self.layers:
+        for attn, ff_f, ff_g in self.layers:
             f_attn, g_attn = attn(x)
             f = f + 0.5*f_attn
             g = g + 0.5*g_attn
-            f = f + 0.5*ff(f)
-            g = g + 0.5*ff(g)
+            f = f + 0.5*ff_f(f)
+            g = g + 0.5*ff_g(g)
         return self.norm_f(f), self.norm_g(g)
     
 class ViTPredictor(nn.Module):
