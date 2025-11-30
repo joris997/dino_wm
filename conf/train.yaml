@@ -21,10 +21,10 @@ hydra:
   launcher:
     submitit_folder: ${hydra.sweep.dir}/.submitit/%j
     nodes: 1
-    tasks_per_node: 1
+    tasks_per_node: 4
     cpus_per_task: 8
-    mem_gb: 32
-    gres: "gpu:h100:1"
+    mem_gb: 128
+    gres: "gpu:3080RTX:4"
     timeout_min: 2880
     setup: ["export DEBUGVAR=$(scontrol show hostnames $SLURM_JOB_NODELIST)",
             export MASTER_ADDR="$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)",
