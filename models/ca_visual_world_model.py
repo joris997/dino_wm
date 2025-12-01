@@ -335,7 +335,7 @@ class VWorldModel(nn.Module):
                 z_tgt[:, :, :, :].detach()
             )
 
-            loss = loss + z_loss
+            loss = loss + z_act_history_loss
             loss_components["z_loss"] = z_loss
             loss_components["z_visual_loss"] = z_visual_loss
             loss_components["z_proprio_loss"] = z_proprio_loss
@@ -369,7 +369,7 @@ class VWorldModel(nn.Module):
             self.print(f"act_reconstructed.shape: {act_reconstructed.shape}, act.shape: {act.shape}")
             act_loss = self.emb_criterion(act_reconstructed, act[:, :-1, :])
             loss_components["act_loss"] = act_loss
-            loss = loss + act_loss
+            # loss = loss + act_loss
         else:
             visual_reconstructed = None
 
