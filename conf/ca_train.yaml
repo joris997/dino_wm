@@ -34,7 +34,7 @@ training:
   precision: "bf16"
   seed: 0
   epochs: 10
-  batch_size: 4 # was 16 should >= nodes * tasks_per_node
+  batch_size: 5 # was 16 should >= nodes * tasks_per_node
   save_every_x_epoch: 1
   reconstruct_every_x_batch: 500
   num_reconstruct_samples: 6

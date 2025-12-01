@@ -192,9 +192,12 @@ class VWorldModel(nn.Module):
         u_rshp = rearrange(u, "b t p d -> b (t p) d")
         self.print(f"z_rshp.shape: {z_rshp.shape}, u_rshp.shape: {u_rshp.shape}")
 
-        dz_rshp = self.predictor(z_rshp, u_rshp)
-        dz = rearrange(dz_rshp, "b (t p) d -> b t p d", t=z.shape[1])
-        zp1 = z + self.Ts*dz
+        # dz_rshp = self.predictor(z_rshp, u_rshp)
+        # dz = rearrange(dz_rshp, "b (t p) d -> b t p d", t=z.shape[1])
+        # zp1 = z + self.Ts*dz
+        zp1_rshp = self.predictor(z_rshp, u_rshp)
+        zp1 = rearrange(zp1_rshp, "b (t p) d -> b t p d", t=z.shape[1])
+        dz = (zp1 - z) / self.Ts
 
         # reshape back to (b, num_hist, num_patches, emb_dim)
         self.print(f"dz.shape: {dz.shape}, zp1.shape: {zp1.shape}\n")
