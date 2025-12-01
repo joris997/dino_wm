@@ -539,6 +539,10 @@ class Trainer:
             loss_components = {
                 key: value.mean().item() for key, value in loss_components.items()
             }
+            # connect to wandb
+            if i % 100 == 0:
+                wandb.log(loss_components)
+
             if self.cfg.has_decoder and plot:
                 # only eval images when plotting due to speed
                 if self.cfg.has_predictor:
