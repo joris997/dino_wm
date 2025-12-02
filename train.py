@@ -841,8 +841,11 @@ class Trainer:
                 imgs,
                 nrow=num_samples * num_frames,
                 normalize=True,
-                value_range=(0,255),
+                value_range=(-1,1),
             )
+            # now convert to (0,255)
+            imgs = (imgs + 1) * 127.5
+            imgs = imgs.to(torch.uint8)
             self.wandb_run.log(
                 {
                     f"{phase}_samples_epoch_{epoch}_batch_{batch}": wandb.Image(
