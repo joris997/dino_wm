@@ -192,12 +192,12 @@ class VWorldModel(nn.Module):
         u_rshp = rearrange(u, "b t p d -> b (t p) d")
         self.print(f"z_rshp.shape: {z_rshp.shape}, u_rshp.shape: {u_rshp.shape}")
 
-        # dz_rshp = self.predictor(z_rshp, u_rshp)
-        # dz = rearrange(dz_rshp, "b (t p) d -> b t p d", t=z.shape[1])
-        # zp1 = z + self.Ts*dz
-        zp1_rshp = self.predictor(z_rshp, u_rshp)
-        zp1 = rearrange(zp1_rshp, "b (t p) d -> b t p d", t=z.shape[1])
-        dz = (zp1 - z) / self.Ts
+        dz_rshp = self.predictor(z_rshp, u_rshp)
+        dz = rearrange(dz_rshp, "b (t p) d -> b t p d", t=z.shape[1])
+        zp1 = z + self.Ts*dz
+        # zp1_rshp = self.predictor(z_rshp, u_rshp)
+        # zp1 = rearrange(zp1_rshp, "b (t p) d -> b t p d", t=z.shape[1])
+        # dz = (zp1 - z) / self.Ts
 
         # reshape back to (b, num_hist, num_patches, emb_dim)
         self.print(f"dz.shape: {dz.shape}, zp1.shape: {zp1.shape}\n")
@@ -249,9 +249,9 @@ class VWorldModel(nn.Module):
         """
         self.print(f"\n\tVWorldModel separate_emb:")
         self.print(f"z.shape: {z.shape}")
-        o, p, u_hist = z[..., :-(self.proprio_dim*self.num_proprio_repeat + self.action_dim*self.num_action_repeat)], \
-                       z[..., -(self.proprio_dim*self.num_proprio_repeat + self.action_dim*self.num_action_repeat) :-self.action_dim*self.num_action_repeat],  \
-                       z[..., -self.action_dim*self.num_action_repeat:]
+        o, p, u_hist = z[..., :-(self.proprio_dim + self.action_dim)], \
+                       z[..., -(self.proprio_dim + self.action_dim) :-self.action_dim],  \
+                       z[..., -self.action_dim:]
         self.print(f"o.shape: {o.shape}")
         self.print(f"p.shape: {p.shape}")
         self.print(f"u_hist.shape: {u_hist.shape}")

@@ -228,48 +228,49 @@ class ViTPredictor(nn.Module):
         #        u_now: control input of last frame (b, 1, action_dim)
         # output: dz: (b, num_hist * num_patches per img, emb_dim)
         # """
-        # b, n, e = x.shape
-        # p = NUM_PATCHES
-        # t = n // p
-
-        # # print(f"\n\nViTPredictor forward: x.shape={x.shape}, u_now.shape={u_now.shape}")
-        # #? x size: [b, num_hist * num_patches, embedding dim + actions_hist]
-        # x = x + self.pos_embedding[:, :n]
-        # x = self.dropout(x) 
-        
-        # xf, xg = self.transformer(x)
-
-        # self.print(f"x.shape (after transformer): {x.shape}")
-        # #? size: [b, num_hist * num_patches, embedding dim + actions_hist]
-        # # plot x into two to get f(z) and g(z) so later we can compute
-        # # dz = f(z) + g(z)*u_now
-        # fz = self.fz_net(xf)
-        # gz = self.gz_net(xg)
-        # # repeat u_now 3 times to go from [16,196,10] to [16,588,10]
-        # u_now = repeat(u_now, 'b p d -> b (t p) d', t=t, p=p)  # (b, num_hist * num_patches per img, action_dim)
-        # self.print(f"fz.shape: {fz.shape}, gz.shape: {gz.shape}, u_now.shape: {u_now.shape}")
-        # # gz: [16, 588, 404*10], u_now: [16, 588, 10]
-        # # we want gz@u_now to be [16, 588, 404]
-        # gz = rearrange(gz, 'b n (d u) -> b n d u', u=self.action_dim)  # (b, num_hist * num_patches per img, dim, action_dim)
-        # self.print(f"gz.shape (after rearrange): {gz.shape}")
-        # gz_u = torch.einsum('bndu,bnu->bnd', gz, u_now)  # (b, num_hist * num_patches per img, dim)
-        # self.print(f"gz_u.shape (after einsum): {gz_u.shape}")
-        # dz = fz + gz_u  # (b, num_hist * num_patches per img, dim)
-        # self.print(f"dz.shape (final output): {dz.shape}\n")
-        
-        # old ViT implementation
         b, n, e = x.shape
-        # append u_now to each patch embedding
-        self.print(f"ViTPredictor forward: x.shape={x.shape}, u_now.shape={u_now.shape}")
-        # repeat u_now 3 times in the second dimension
-        u_now_expanded = repeat(u_now, 'b n d -> b (repeat n) d', repeat=3)
-        self.print(f"u_now_expanded.shape={u_now_expanded.shape}")
-        x = torch.cat([x, u_now_expanded], dim=-1)  # (b, n, e + action_dim
-        # pass throuhgh old ViT
-        x = x + self.pos_embedding_old[:, :n]
-        x = self.dropout_old(x)
-        x = self.transformer_old(x)
-        return x[...,:-10]
+        p = NUM_PATCHES
+        t = n // p
+
+        # print(f"\n\nViTPredictor forward: x.shape={x.shape}, u_now.shape={u_now.shape}")
+        #? x size: [b, num_hist * num_patches, embedding dim + actions_hist]
+        x = x + self.pos_embedding[:, :n]
+        x = self.dropout(x) 
+        
+        xf, xg = self.transformer(x)
+
+        self.print(f"x.shape (after transformer): {x.shape}")
+        #? size: [b, num_hist * num_patches, embedding dim + actions_hist]
+        # plot x into two to get f(z) and g(z) so later we can compute
+        # dz = f(z) + g(z)*u_now
+        fz = self.fz_net(xf)
+        gz = self.gz_net(xg)
+        # repeat u_now 3 times to go from [16,196,10] to [16,588,10]
+        u_now = repeat(u_now, 'b p d -> b (t p) d', t=t, p=p)  # (b, num_hist * num_patches per img, action_dim)
+        self.print(f"fz.shape: {fz.shape}, gz.shape: {gz.shape}, u_now.shape: {u_now.shape}")
+        # gz: [16, 588, 404*10], u_now: [16, 588, 10]
+        # we want gz@u_now to be [16, 588, 404]
+        gz = rearrange(gz, 'b n (d u) -> b n d u', u=self.action_dim)  # (b, num_hist * num_patches per img, dim, action_dim)
+        self.print(f"gz.shape (after rearrange): {gz.shape}")
+        gz_u = torch.einsum('bndu,bnu->bnd', gz, u_now)  # (b, num_hist * num_patches per img, dim)
+        self.print(f"gz_u.shape (after einsum): {gz_u.shape}")
+        dz = fz + gz_u  # (b, num_hist * num_patches per img, dim)
+        self.print(f"dz.shape (final output): {dz.shape}\n")
+        return dz
+        
+        # # old ViT implementation
+        # b, n, e = x.shape
+        # # append u_now to each patch embedding
+        # self.print(f"ViTPredictor forward: x.shape={x.shape}, u_now.shape={u_now.shape}")
+        # # repeat u_now 3 times in the second dimension
+        # u_now_expanded = repeat(u_now, 'b n d -> b (repeat n) d', repeat=3)
+        # self.print(f"u_now_expanded.shape={u_now_expanded.shape}")
+        # x = torch.cat([x, u_now_expanded], dim=-1)  # (b, n, e + action_dim
+        # # pass throuhgh old ViT
+        # x = x + self.pos_embedding_old[:, :n]
+        # x = self.dropout_old(x)
+        # x = self.transformer_old(x)
+        # return x[...,:-10]
     
     def get_fz(self, x):
         b, n, e = x.shape

@@ -899,7 +899,6 @@ class Trainer:
 
         # log with wandb
         if self.accelerator.is_main_process:
-            print(f"min(imgs): {imgs.min()}, max(imgs): {imgs.max()}")
             imgs = utils.make_grid(
                 imgs,
                 nrow=num_samples * num_frames,
