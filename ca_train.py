@@ -903,7 +903,7 @@ class Trainer:
                 imgs,
                 nrow=num_samples * num_frames,
                 normalize=True,
-                value_range=(-1, 1),
+                value_range=(0,255),
             )
             self.wandb_run.log(
                 {
