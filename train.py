@@ -837,11 +837,17 @@ class Trainer:
 
         # log with wandb
         if self.accelerator.is_main_process:
+            imgs = utils.make_grid(
+                imgs,
+                nrow=num_samples * num_frames,
+                normalize=True,
+                value_range=(-1, 1),
+            )
             self.wandb_run.log(
                 {
-                    f"{phase}_samples_epoch_{epoch}_batch_{batch}": [wandb.Image(
-                        img
-                    ) for img in imgs],
+                    f"{phase}_samples_epoch_{epoch}_batch_{batch}": wandb.Image(
+                        imgs
+                    ),
                 }
             )
 
