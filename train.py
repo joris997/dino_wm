@@ -839,9 +839,9 @@ class Trainer:
         if self.accelerator.is_main_process:
             self.wandb_run.log(
                 {
-                    f"{phase}_samples_epoch_{epoch}_batch_{batch}": wandb.Image(
-                        imgs
-                    )
+                    f"{phase}_samples_epoch_{epoch}_batch_{batch}": [wandb.Image(
+                        img
+                    ) for img in imgs],
                 }
             )
 
