@@ -899,14 +899,15 @@ class Trainer:
 
         # log with wandb
         if self.accelerator.is_main_process:
+            print(f"min(imgs): {imgs.min()}, max(imgs): {imgs.max()}")
             imgs = utils.make_grid(
                 imgs,
                 nrow=num_samples * num_frames,
                 normalize=True,
                 value_range=(-1, 1),
             )
-            # now convert to (0,255)
-            imgs = (imgs + 1) * 127.5
+            # now convert from (0,1) to (0,255)
+            imgs = (imgs * 255.0).clamp(0, 255)
             imgs = imgs.to(torch.uint8)
             self.wandb_run.log(
                 {

@@ -844,7 +844,7 @@ class Trainer:
                 value_range=(-1,1),
             )
             # now convert to (0,255)
-            imgs = (imgs + 1) * 127.5
+            imgs = (imgs * 255.0).clamp(0, 255)
             imgs = imgs.to(torch.uint8)
             self.wandb_run.log(
                 {
