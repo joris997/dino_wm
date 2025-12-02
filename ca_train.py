@@ -23,6 +23,10 @@ from concurrent.futures import ThreadPoolExecutor
 from metrics.image_metrics import eval_images
 from utils import slice_trajdict_with_t, cfg_to_dict, seed, sample_tensors, strip_targets_from_cfg
 
+import matplotlib.pyplot as plt
+# import makegrid
+
+
 warnings.filterwarnings("ignore")
 log = logging.getLogger(__name__)
 
@@ -892,6 +896,16 @@ class Trainer:
             num_columns=num_samples * num_frames,
             img_name=f"{phase}/{phase}_e{str(epoch).zfill(5)}_b{batch}.png",
         )
+
+        # log with wandb
+        if self.accelerator.is_main_process:
+            self.wandb_run.log(
+                {
+                    f"{phase}_samples_epoch_{epoch}_batch_{batch}": wandb.Image(
+                        imgs
+                    )
+                }
+            )
 
     def plot_imgs(self, imgs, num_columns, img_name):
         utils.save_image(

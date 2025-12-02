@@ -502,6 +502,10 @@ class Trainer:
             loss_components = {
                 key: value.mean().item() for key, value in loss_components.items()
             }
+
+            if i%100 == 0:
+                wandb.log(loss_components)
+
             if self.cfg.has_decoder and plot:
                 # only eval images when plotting due to speed
                 if self.cfg.has_predictor:
@@ -830,6 +834,16 @@ class Trainer:
             num_columns=num_samples * num_frames,
             img_name=f"{phase}/{phase}_e{str(epoch).zfill(5)}_b{batch}.png",
         )
+
+        # log with wandb
+        if self.accelerator.is_main_process:
+            self.wandb_run.log(
+                {
+                    f"{phase}_samples_epoch_{epoch}_batch_{batch}": wandb.Image(
+                        imgs
+                    )
+                }
+            )
 
     def plot_imgs(self, imgs, num_columns, img_name):
         utils.save_image(

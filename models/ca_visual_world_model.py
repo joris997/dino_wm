@@ -335,7 +335,7 @@ class VWorldModel(nn.Module):
                 z_tgt[:, :, :, :].detach()
             )
 
-            loss = loss + z_act_history_loss
+            loss = loss + z_loss
             loss_components["z_loss"] = z_loss
             loss_components["z_visual_loss"] = z_visual_loss
             loss_components["z_proprio_loss"] = z_proprio_loss
