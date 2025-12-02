@@ -187,7 +187,7 @@ class ViTPredictor(nn.Module):
         self.dim = dim
         self.action_dim = action_dim
 
-        self.pos_embedding = nn.Parameter(0.05*torch.randn(1, num_frames * (num_patches), dim)) # dim for the pos encodings
+        self.pos_embedding = nn.Parameter(0.5*torch.randn(1, num_frames * (num_patches), dim)) # dim for the pos encodings
         self.dropout = nn.Dropout(emb_dropout)
 
         heads_f = heads // 2
