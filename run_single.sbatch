@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-#SBATCH --gres gpu:4
+#SBATCH --gres gpu:1
 #SBATCH --mem 40GB
-#SBATCH --cpus-per-task 10
+#SBATCH --cpus-per-task 20
 #SBATCH --time 48:00:00
 #SBATCH --constrain "arwen"
 #SBATCH --output /Midgard/home/%u/logs/%J_slurm.out

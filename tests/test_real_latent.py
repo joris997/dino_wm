@@ -21,7 +21,7 @@ from utils import load_vit
 
 folder = '/home/none/gits/dino_wm/outputs'
 # run = '2025-10-27/16-34-58'
-run = '2025-10-30/12-24-13'
+run = '2025-12-02/21-40-54'
 ckpt_folder = os.path.join(folder, run)
 
 # world model

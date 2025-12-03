@@ -175,7 +175,7 @@ class Trainer:
         self._keys_to_save += (
             ["decoder"] if self.train_decoder else []
         )
-        self._keys_to_save += ["action_encoder", "proprio_encoder"]
+        self._keys_to_save += ["action_encoder", "proprio_encoder", "action_decoder"]
 
         self.init_models()
         self.init_optimizers()

@@ -115,7 +115,7 @@ def load_vit(checkpoint_folder:str):
     model_ckpt = os.path.join(checkpoint_folder, 'checkpoints', 'model_latest.pth')
     with open(model_ckpt, "rb") as f:
         payload = torch.load(f, map_location='cpu', weights_only=False)
-    
+    print(payload.keys())
     cfg = OmegaConf.load(os.path.join(checkpoint_folder,'hydra.yaml'))
 
     #! create the DinoV3 encoder
