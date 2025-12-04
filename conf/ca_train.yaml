@@ -5,6 +5,7 @@ defaults:
   - action_encoder: proprio
   - action_decoder: proprio
   - proprio_encoder: proprio
+  - proprio_decoder: proprio
   - decoder: vqvae
   - predictor: ca_vit
   - override hydra/launcher: submitit_slurm
@@ -43,6 +44,8 @@ training:
   predictor_lr: 5e-4
   action_encoder_lr: 5e-4
   action_decoder_lr: 5e-4
+  proprio_encoder_lr: 5e-4
+  proprio_decoder_lr: 5e-4
 
 img_size: 224 # should be a multiple of 224
 frameskip: 5
@@ -62,6 +65,7 @@ num_pred: 1 # only supports 1
 has_predictor: True # set this to False for only training a decoder
 has_decoder: True # set this to False for only training a predictor
 has_action_decoder: True # set this to False for no action decoder
+has_proprio_decoder: True # set this to False for no proprioception decoder
 model:
   _target_: models.ca_visual_world_model.VWorldModel
   image_size: ${img_size}
@@ -71,6 +75,7 @@ model:
   train_predictor: True
   train_decoder: True
   train_action_decoder: True
+  train_proprio_decoder: True
 
 debug: False
 

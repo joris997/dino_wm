@@ -151,15 +151,18 @@ class Trainer:
         self.predictor = None
         self.decoder = None
         self.action_decoder = None
+        self.proprio_decoder = None
         self.train_encoder = self.cfg.model.train_encoder
         self.train_predictor = self.cfg.model.train_predictor
         self.train_decoder = self.cfg.model.train_decoder
         self.train_action_decoder = self.cfg.model.train_action_decoder
+        self.train_proprio_decoder = self.cfg.model.train_proprio_decoder
         log.info(f"Train encoder, predictor, decoder:\
             {self.cfg.model.train_encoder}\
             {self.cfg.model.train_predictor}\
             {self.cfg.model.train_decoder}\
-            {self.cfg.model.train_action_decoder}")
+            {self.cfg.model.train_action_decoder}\
+            {self.cfg.model.train_proprio_decoder}")
 
         self._keys_to_save = [
             "epoch",
@@ -175,7 +178,7 @@ class Trainer:
         self._keys_to_save += (
             ["decoder"] if self.train_decoder else []
         )
-        self._keys_to_save += ["action_encoder", "proprio_encoder", "action_decoder"]
+        self._keys_to_save += ["action_encoder", "proprio_encoder", "action_decoder", "proprio_decoder"]
 
         self.init_models()
         self.init_optimizers()
@@ -324,10 +327,23 @@ class Trainer:
             if not self.train_action_decoder:
                 for param in self.action_decoder.parameters():
                     param.requires_grad = False
+        
+        # initialize proprio decoder
+        if self.cfg.has_proprio_decoder:
+            if self.proprio_decoder is None:
+                self.proprio_decoder = hydra.utils.instantiate(
+                    self.cfg.proprio_decoder,
+                    emb_dim=self.cfg.proprio_emb_dim,  # 384
+                    out_chans=self.datasets["train"].proprio_dim,
+                )
+
+            if not self.train_proprio_decoder:
+                for param in self.proprio_decoder.parameters():
+                    param.requires_grad = False
 
 
-        self.encoder, self.predictor, self.decoder, self.action_decoder = self.accelerator.prepare(
-            self.encoder, self.predictor, self.decoder, self.action_decoder
+        self.encoder, self.predictor, self.decoder, self.action_decoder, self.proprio_decoder = self.accelerator.prepare(
+            self.encoder, self.predictor, self.decoder, self.action_decoder, self.proprio_decoder
         )
 
         self.model = hydra.utils.instantiate(
@@ -338,6 +354,7 @@ class Trainer:
             predictor=self.predictor,
             decoder=self.decoder,
             action_decoder=self.action_decoder,
+            proprio_decoder=self.proprio_decoder,
             proprio_dim=proprio_emb_dim,
             action_dim=action_emb_dim,
             num_action_repeat=self.cfg.num_action_repeat,
@@ -378,9 +395,15 @@ class Trainer:
 
         if self.cfg.has_action_decoder:
             self.action_decoder_optimizer = torch.optim.Adam(
-                self.action_decoder.parameters(), lr=self.cfg.training.decoder_lr
+                self.action_decoder.parameters(), lr=self.cfg.training.action_decoder_lr
             )
             self.action_decoder_optimizer = self.accelerator.prepare(self.action_decoder_optimizer)
+
+        if self.cfg.has_proprio_decoder:
+            self.proprio_decoder_optimizer = torch.optim.Adam(
+                self.proprio_decoder.parameters(), lr=self.cfg.training.proprio_decoder_lr
+            )
+            self.proprio_decoder_optimizer = self.accelerator.prepare(self.proprio_decoder_optimizer)
 
     def monitor_jobs(self, lock):
         """
@@ -524,6 +547,8 @@ class Trainer:
                 self.action_encoder_optimizer.zero_grad()
             if self.cfg.has_action_decoder:
                 self.action_decoder_optimizer.zero_grad()
+            if self.cfg.has_proprio_decoder:
+                self.proprio_decoder_optimizer.zero_grad()
 
             self.accelerator.backward(loss)
 
@@ -536,6 +561,8 @@ class Trainer:
                 self.action_encoder_optimizer.step()
             if self.cfg.has_action_decoder and self.model.train_action_decoder:
                 self.action_decoder_optimizer.step()
+            if self.cfg.has_proprio_decoder and self.model.train_proprio_decoder:
+                self.proprio_decoder_optimizer.step()
 
             loss = self.accelerator.gather_for_metrics(loss).mean()
 
@@ -612,7 +639,7 @@ class Trainer:
             loss_components = {f"train_{k}": [v] for k, v in loss_components.items()}
             self.logs_update(loss_components)
 
-            #if i >= 1000:
+            # if i >= 100:
             #    break
 
     def val(self):

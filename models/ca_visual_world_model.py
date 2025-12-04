@@ -13,6 +13,7 @@ class VWorldModel(nn.Module):
         proprio_encoder,
         action_encoder,
         action_decoder,
+        proprio_decoder,
         decoder,
         predictor,
         proprio_dim=0,
@@ -24,6 +25,7 @@ class VWorldModel(nn.Module):
         train_predictor=False,
         train_decoder=True,
         train_action_decoder=True,
+        train_proprio_decoder=True,
     ):
         super().__init__()
         self.cfg_dict = cfg_dict
@@ -34,12 +36,14 @@ class VWorldModel(nn.Module):
         self.proprio_encoder = proprio_encoder
         self.action_encoder = action_encoder
         self.action_decoder = action_decoder
+        self.proprio_decoder = proprio_decoder
         self.decoder = decoder  # decoder could be None
         self.predictor = predictor  # predictor could be None
         self.train_encoder = train_encoder
         self.train_predictor = train_predictor
         self.train_decoder = train_decoder
         self.train_action_decoder = train_action_decoder
+        self.train_proprio_decoder = train_proprio_decoder
         self.num_action_repeat = num_action_repeat
         self.num_proprio_repeat = num_proprio_repeat
         self.proprio_dim = proprio_dim * num_proprio_repeat 
@@ -52,6 +56,7 @@ class VWorldModel(nn.Module):
         self.print(f"proprio encoder: {proprio_encoder}")
         self.print(f"action encoder: {action_encoder}")
         self.print(f"action decoder: {action_decoder}")
+        self.print(f"proprio decoder: {proprio_decoder}")
         self.print(f"proprio_dim: {proprio_dim}, after repeat: {self.proprio_dim}")
         self.print(f"action_dim: {action_dim}, after repeat: {self.action_dim}")
         self.print(f"emb_dim: {self.emb_dim}")
@@ -87,6 +92,8 @@ class VWorldModel(nn.Module):
             self.decoder.train(mode)
         if self.action_decoder is not None and self.train_action_decoder:
             self.action_decoder.train(mode)
+        if self.proprio_decoder is not None and self.train_proprio_decoder:
+            self.proprio_decoder.train(mode)
 
     def eval(self):
         super().eval()
@@ -99,6 +106,8 @@ class VWorldModel(nn.Module):
             self.decoder.eval()
         if self.action_decoder is not None:
             self.action_decoder.eval()
+        if self.proprio_decoder is not None:
+            self.proprio_decoder.eval()
 
     def encode(self, obs, act): 
         """
@@ -147,6 +156,12 @@ class VWorldModel(nn.Module):
         act = self.action_decoder(act_emb) # (b, num_frames, action_dim)
         self.print(f"act.shape: {act.shape}")
         return act
+    
+    def decode_proprio(self, proprio_emb):
+        self.print(f"Decoding proprio emb shape: {proprio_emb.shape}")
+        proprio = self.proprio_decoder(proprio_emb[:,:,0,:]) # (b, num_frames, proprio_dim)
+        self.print(f"proprio.shape: {proprio.shape}")
+        return proprio
     
     def encode_proprio(self, proprio):
         self.print(f"Encoding proprio shape: {proprio.shape}")
@@ -236,9 +251,12 @@ class VWorldModel(nn.Module):
         self.print(f"visual.shape (before rearrange): {visual.shape}")
         visual = rearrange(visual, "(b t) c h w -> b t c h w", t=o.shape[1])
         self.print(f"visual.shape (after rearrange): {visual.shape}")
+
+        proprio = self.decode_proprio(p) if p is not None else None
+
         obs = {
             "visual": visual,
-            "proprio": p,  # Note: no decoder for proprio for now!
+            "proprio": proprio,  # Note: no decoder for proprio for now!
         }
         return obs, diff
     
@@ -290,10 +308,13 @@ class VWorldModel(nn.Module):
         u_tgt = u[:, :1, :, :]  # (b, num_hist, action_dim)
         visual_src = obs['visual'][:, :self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
         visual_tgt = obs['visual'][:, 1:1 + self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
+        proprio_src = obs['proprio'][:, :self.local_hist, ...]  # (b, num_hist, proprio_dim)
+        proprio_tgt = obs['proprio'][:, 1:1 + self.local_hist, ...]  # (b, num_hist, proprio_dim)
         self.print(f"\no_src.shape: {o_src.shape}, o_tgt.shape: {o_tgt.shape}")
         self.print(f"u_src.shape: {u_src.shape}, u_tgt.shape: {u_tgt.shape}")
         self.print(f"z_src.shape: {z_src.shape}, z_tgt.shape: {z_tgt.shape}")
         self.print(f"visual_src.shape: {visual_src.shape}, visual_tgt.shape: {visual_tgt.shape}")
+        self.print(f"proprio_src.shape: {proprio_src.shape}, proprio_tgt.shape: {proprio_tgt.shape}")
 
         if self.predictor is not None:
             z_pred, dz_pred = self.predict(z_src, u_src)
@@ -313,6 +334,14 @@ class VWorldModel(nn.Module):
                 loss_components["decoder_recon_loss_pred"] = recon_loss_pred
                 loss_components["decoder_vq_loss_pred"] = diff_pred
                 loss_components["decoder_loss_pred"] = decoder_loss_pred
+
+                if self.proprio_decoder is not None:
+                    proprio_pred = obs_pred['proprio']
+                    self.print(f"proprio_pred.shape: {proprio_pred.shape}, proprio_tgt.shape: {proprio_tgt.shape}")
+                    recon_loss_proprio_pred = self.decoder_criterion(proprio_pred, proprio_tgt)
+                    loss_components["decoder_recon_loss_proprio_pred"] = recon_loss_proprio_pred
+                    decoder_loss_pred = decoder_loss_pred
+
             else:
                 visual_pred = None
 
@@ -359,7 +388,6 @@ class VWorldModel(nn.Module):
                 recon_loss_reconstructed
                 + self.decoder_latent_loss_weight * diff_reconstructed
             )
-
             loss_components["decoder_recon_loss_reconstructed"] = recon_loss_reconstructed
             loss_components["decoder_vq_loss_reconstructed"] = diff_reconstructed
             loss_components["decoder_loss_reconstructed"] = decoder_loss_reconstructed
@@ -369,7 +397,15 @@ class VWorldModel(nn.Module):
             self.print(f"act_reconstructed.shape: {act_reconstructed.shape}, act.shape: {act.shape}")
             act_loss = self.emb_criterion(act_reconstructed, act[:, :-1, :])
             loss_components["act_loss"] = act_loss
-            # loss = loss + act_loss
+            loss = loss + act_loss
+
+            # Proprioception reconstruction loss
+            if self.proprio_decoder is not None:
+                proprio_reconstructed = obs_reconstructed["proprio"]
+                self.print(f"proprio_reconstructed.shape: {proprio_reconstructed.shape}, obs['proprio'].shape: {obs['proprio'].shape}")
+                proprio_recon_loss = self.decoder_criterion(proprio_reconstructed, obs['proprio'])
+                loss_components["proprio_recon_loss"] = proprio_recon_loss
+                loss = loss + proprio_recon_loss
         else:
             visual_reconstructed = None
 
