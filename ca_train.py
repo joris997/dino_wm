@@ -95,14 +95,16 @@ class Trainer:
             if self.cfg.debug:
                 log.info("WARNING: Running in debug mode...")
                 self.wandb_run = wandb.init(
-                    project="dino_wm_debug",
+                    project=cfg.wandb.project+"_debug",
+                    entity=cfg.wandb.entity,
                     config=wandb_dict,
                     id=wandb_run_id,
                     resume="allow",
                 )
             else:
                 self.wandb_run = wandb.init(
-                    project="dino_wm",
+                    project=cfg.wandb.project,
+                    entity=cfg.wandb.entity,
                     config=wandb_dict,
                     id=wandb_run_id,
                     resume="allow",

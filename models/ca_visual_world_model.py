@@ -124,6 +124,7 @@ class VWorldModel(nn.Module):
         self.print(f"\n\tVWorldModel encode:")
         o_dct = self.encode_obs(obs)
         o, p = o_dct['visual'], o_dct['proprio']
+        self.print(f"act.shape: {act.shape}")
         act_emb = self.encode_act(act)
         self.print(f"act_emb.shape: {act_emb.shape}")
 
@@ -179,6 +180,7 @@ class VWorldModel(nn.Module):
 
         vis = rearrange(vis, "b t ... -> (b t) ...")
         vis = self.encoder_transform(vis)
+        self.print(f"vis.shape (after transform): {vis.shape}")
         vis_emb = self.encoder.forward(vis)
         vis_emb = rearrange(vis_emb, "(b t) p d -> b t p d", t=obs['visual'].shape[1])
 
@@ -433,7 +435,7 @@ class VWorldModel(nn.Module):
         # prepend the last action of act_0 as this is the action at the current time step
         # and therefore the first action that needs to be taken!
         action = torch.cat([act_0[:, -1:], action], dim=1)
-        self.print(f"obs_0['visual'].shape: {obs_0['visual'].shape}, obs_0['proprio'].shape: {obs_0['proprio'].shape}, act_0.shape: {act_0.shape}")
+        self.print(f"obs_0['visual'].shape: {obs_0['visual'].shape}, obs_0['proprio'].shape: {obs_0['proprio'].shape}, act_0.shape: {act_0.shape}, action.shape: {action.shape}")
         o, z, u = self.encode(obs_0, act_0)
         self.print(f"Initial o.shape: {o.shape}, z.shape: {z.shape}, u.shape: {u.shape}, action.shape: {action.shape}")
         t = 0
@@ -484,17 +486,45 @@ class VWorldModel(nn.Module):
             u_now
         )  # recon loss should only affect decoder
 
+        # Just return the current observation prediction
         obs_now, _, _ = self.decode(
-            z_pred[:, -self.num_hist:, :],
+            z_pred[:, -1:, :],
             u_now
         )  # recon loss should only affect decoder
         return obs_pred, z_pred, dz_pred, obs_now
     
     def get_fz_gz(self, obs, act):
-        assert obs['visual'].shape[1] == act.shape[1], "obs and act must have the same number of frames"
-        act_0 = torch.zeros_like(act[:, -1:, ...])
-        o, z, u = self.encode(obs, act_0)
+        self.print(f"\n\nVWorldModel get_fz_gz:")
+        if obs['visual'].shape[1] == act.shape[1]:
+            act = torch.cat([act,
+                             torch.zeros_like(act[:, -1:, ...])], dim=1)
+        elif obs['visual'].shape[1] + 1 == act.shape[1]:
+            pass
+        else:
+            raise ValueError("obs and act must have the same number of frames or act must have one more frame than obs")
+        o, z, u = self.encode(obs, act)
 
-        fz = self.predictor.get_fz(z)
-        gz = self.predictor.get_gz(z)
+        zrshp = rearrange(z, "b t p d -> b (t p) d")
+
+        self.print(f"z.shape: {zrshp.shape}")
+        fz = self.predictor.get_fz(zrshp)
+        gz = self.predictor.get_gz(zrshp)
+
+        fz = rearrange(fz, "b (t p) d -> b t p d", t=z.shape[1])
+        gz = rearrange(gz, "b (t p) d u -> b t p d u", t=z.shape[1])
         return fz, gz
+
+    def get_zk1_dz(self, obs, act, u_now=None):
+        self.print(f"\n\nVWorldModel get_zk1_dz:")
+        if obs['visual'].shape[1] == act.shape[1]:
+            act = torch.cat([act,
+                             torch.zeros_like(act[:, -1:, ...])], dim=1)
+        elif obs['visual'].shape[1] + 1 == act.shape[1]:
+            pass
+        else:
+            raise ValueError("obs and act must have the same number of frames or act must have one more frame than obs")
+        o, z, u = self.encode(obs, act)
+        if u_now is not None:
+            u = repeat(u_now.unsqueeze(2), "b t 1 a -> b t f a", f=u.shape[2])
+        z_pred, dz_pred = self.predict(z, u)
+        return z_pred, dz_pred, z

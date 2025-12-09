@@ -35,7 +35,7 @@ training:
   precision: "bf16"
   seed: 0
   epochs: 2
-  batch_size: 5 # was 16 should >= nodes * tasks_per_node
+  batch_size: 5 # was 5 should >= nodes * tasks_per_node
   save_every_x_epoch: 1
   reconstruct_every_x_batch: 500
   num_reconstruct_samples: 6
@@ -87,3 +87,7 @@ plan_settings:
   goal_source: ['dset', 'random_state']
   goal_H: [5]
   alpha: [0.1, 1]
+
+wandb:
+  entity: "joris997-kth"
+  project: "dino_wm"

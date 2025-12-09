@@ -149,6 +149,14 @@ def load_vit(checkpoint_folder:str):
     action_decoder.load_state_dict(payload['action_decoder'].state_dict())
     action_decoder.eval()
 
+    #! create proprio decoder
+    proprio_decoder = ProprioceptiveDecoding(num_frames=cfg.proprio_decoder.num_frames,
+                                            tubelet_size=cfg.proprio_decoder.tubelet_size,
+                                            out_chans=4,
+                                            emb_dim=cfg.proprio_emb_dim)
+    proprio_decoder.load_state_dict(payload['proprio_decoder'].state_dict())
+    proprio_decoder.eval()
+
     #! create decoder
     decoder = VQVAE(channel=cfg.decoder.channel,
                     n_res_block=cfg.decoder.n_res_block,
@@ -181,6 +189,7 @@ def load_vit(checkpoint_folder:str):
                             proprio_encoder=proprio_encoder,
                             action_encoder=action_encoder,
                             action_decoder=action_decoder,
+                            proprio_decoder=proprio_decoder,
                             decoder=decoder,
                             cfg_dict=cfg,
                             action_dim=cfg.action_emb_dim,

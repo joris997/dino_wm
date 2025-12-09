@@ -258,20 +258,6 @@ class ViTPredictor(nn.Module):
         self.print(f"dz.shape (final output): {dz.shape}\n")
         return dz
         
-        # # old ViT implementation
-        # b, n, e = x.shape
-        # # append u_now to each patch embedding
-        # self.print(f"ViTPredictor forward: x.shape={x.shape}, u_now.shape={u_now.shape}")
-        # # repeat u_now 3 times in the second dimension
-        # u_now_expanded = repeat(u_now, 'b n d -> b (repeat n) d', repeat=3)
-        # self.print(f"u_now_expanded.shape={u_now_expanded.shape}")
-        # x = torch.cat([x, u_now_expanded], dim=-1)  # (b, n, e + action_dim
-        # # pass throuhgh old ViT
-        # x = x + self.pos_embedding_old[:, :n]
-        # x = self.dropout_old(x)
-        # x = self.transformer_old(x)
-        # return x[...,:-10]
-    
     def get_fz(self, x):
         b, n, e = x.shape
 
