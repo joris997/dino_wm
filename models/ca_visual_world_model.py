@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 from einops import rearrange, repeat
+from models.behavioral_cloner import mdn_loss
 
 class VWorldModel(nn.Module):
     def __init__(
@@ -14,6 +15,7 @@ class VWorldModel(nn.Module):
         action_encoder,
         action_decoder,
         proprio_decoder,
+        behavioral_cloner,
         decoder,
         predictor,
         proprio_dim=0,
@@ -26,6 +28,7 @@ class VWorldModel(nn.Module):
         train_decoder=True,
         train_action_decoder=True,
         train_proprio_decoder=True,
+        train_behavioral_cloner=True,
     ):
         super().__init__()
         self.cfg_dict = cfg_dict
@@ -37,6 +40,7 @@ class VWorldModel(nn.Module):
         self.action_encoder = action_encoder
         self.action_decoder = action_decoder
         self.proprio_decoder = proprio_decoder
+        self.behavioral_cloner = behavioral_cloner  # could be None
         self.decoder = decoder  # decoder could be None
         self.predictor = predictor  # predictor could be None
         self.train_encoder = train_encoder
@@ -44,6 +48,7 @@ class VWorldModel(nn.Module):
         self.train_decoder = train_decoder
         self.train_action_decoder = train_action_decoder
         self.train_proprio_decoder = train_proprio_decoder
+        self.train_behavioral_cloner = train_behavioral_cloner
         self.num_action_repeat = num_action_repeat
         self.num_proprio_repeat = num_proprio_repeat
         self.proprio_dim = proprio_dim * num_proprio_repeat 
@@ -57,6 +62,7 @@ class VWorldModel(nn.Module):
         self.print(f"action encoder: {action_encoder}")
         self.print(f"action decoder: {action_decoder}")
         self.print(f"proprio decoder: {proprio_decoder}")
+        self.print(f"behavioral_cloner: {behavioral_cloner}")
         self.print(f"proprio_dim: {proprio_dim}, after repeat: {self.proprio_dim}")
         self.print(f"action_dim: {action_dim}, after repeat: {self.action_dim}")
         self.print(f"emb_dim: {self.emb_dim}")
@@ -75,6 +81,7 @@ class VWorldModel(nn.Module):
         self.decoder_criterion = nn.MSELoss()
         self.decoder_latent_loss_weight = 0.25
         self.emb_criterion = nn.MSELoss()
+        self.BC_criterion = mdn_loss
         
     def print(self, *args):
         if self.cfg_dict.debug:
@@ -94,6 +101,8 @@ class VWorldModel(nn.Module):
             self.action_decoder.train(mode)
         if self.proprio_decoder is not None and self.train_proprio_decoder:
             self.proprio_decoder.train(mode)
+        if self.behavioral_cloner is not None and self.train_behavioral_cloner:
+            self.behavioral_cloner.train(mode)
 
     def eval(self):
         super().eval()
@@ -108,6 +117,8 @@ class VWorldModel(nn.Module):
             self.action_decoder.eval()
         if self.proprio_decoder is not None:
             self.proprio_decoder.eval()
+        if self.behavioral_cloner is not None:
+            self.behavioral_cloner.eval()
 
     def encode(self, obs, act): 
         """
@@ -140,8 +151,8 @@ class VWorldModel(nn.Module):
         ], dim=-1
         )  # (b, num_frames, num_patches, dim + proprio_dim + action_dim)
         
-        # the u is now only the current u, the history of u is now part of the latent state!
-        u = act_emb[:, -1:, ...]
+        # the u is now only the current u + the next u (used for behavioral cloner model)!
+        u = act_emb[:, -2:, ...]
         return o, z, u
     
     def encode_act(self, act):
@@ -301,13 +312,14 @@ class VWorldModel(nn.Module):
         loss_components = {}
         o, z, u = self.encode(obs, act)
         self.print(f"act: {act}")
+        self.print(f"o.shape: {o.shape}, z.shape: {z.shape}, u.shape: {u.shape}")
         # for the targets, we remove 1 index as the last observation is removed to align it with the action history
         o_src = o[:, : self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
         o_tgt = o[:, 1:1 + self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
         z_src = z[:, : self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
         z_tgt = z[:, 1:1 + self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
-        u_src = u[:, :1, :, :]  # (b, num_hist, action_dim)
-        u_tgt = u[:, :1, :, :]  # (b, num_hist, action_dim)
+        u_src = u[:, :1, :, :]  # (b, 1, action_dim)
+        u_tgt = u[:, 1:2, :, :]  # (b, 1, action_dim)
         visual_src = obs['visual'][:, :self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
         visual_tgt = obs['visual'][:, 1:1 + self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
         proprio_src = obs['proprio'][:, :self.local_hist, ...]  # (b, num_hist, proprio_dim)
@@ -374,6 +386,17 @@ class VWorldModel(nn.Module):
         else:
             visual_pred = None
             z_pred = None
+
+        if self.behavioral_cloner is not None and self.train_behavioral_cloner:
+            self.print(f"GOING BEHAVIORAL CLONING")
+            # remove the history- and patch embedding dimension of u here because
+            # u_src and u_pred only have one time step and all patches are the same
+            self.print(f"z_src.shape: {z_src.shape}, u_src.shape: {u_src.shape}, u_tgt.shape: {u_tgt.shape}")
+            logits, means, logstds = self.behavioral_cloner(z_src, u_src[:, 0, :, :])
+            self.print(f"logits.shape: {logits.shape}, means.shape: {means.shape}, logstds.shape: {logstds.shape}, act.shape: {act.shape}")
+            bc_loss = self.BC_criterion(logits, means, logstds, u_tgt[:, 0, 0, :])
+            loss_components["bc_loss"] = bc_loss
+            loss = loss + bc_loss
 
         if self.decoder is not None:
             self.print(f"GOING DECODING FULL")

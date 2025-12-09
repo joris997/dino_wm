@@ -8,6 +8,7 @@ defaults:
   - proprio_decoder: proprio
   - decoder: vqvae
   - predictor: ca_vit
+  - behavioral_cloner: gaussian_mixture
   - override hydra/launcher: submitit_slurm
 
 # base path to save model outputs. Checkpoints will be saved to ${ckpt_base_path}/outputs.
@@ -35,7 +36,7 @@ training:
   precision: "bf16"
   seed: 0
   epochs: 2
-  batch_size: 5 # was 5 should >= nodes * tasks_per_node
+  batch_size: 1 # was 5 should >= nodes * tasks_per_node
   save_every_x_epoch: 1
   reconstruct_every_x_batch: 500
   num_reconstruct_samples: 6
@@ -46,6 +47,7 @@ training:
   action_decoder_lr: 5e-4
   proprio_encoder_lr: 5e-4
   proprio_decoder_lr: 5e-4
+  behavioral_cloner_lr: 5e-4
 
 img_size: 224 # should be a multiple of 224
 frameskip: 5
@@ -66,6 +68,7 @@ has_predictor: True # set this to False for only training a decoder
 has_decoder: True # set this to False for only training a predictor
 has_action_decoder: True # set this to False for no action decoder
 has_proprio_decoder: True # set this to False for no proprioception decoder
+has_behavioral_cloner: True # Set this to True if simultaneously we wish to train gaussian mixture u_next
 model:
   _target_: models.ca_visual_world_model.VWorldModel
   image_size: ${img_size}
@@ -76,8 +79,9 @@ model:
   train_decoder: True
   train_action_decoder: True
   train_proprio_decoder: True
+  train_behavioral_cloner: True
 
-debug: False
+debug: True
 
 # Planning params for planning eval jobs launched during training
 plan_settings: 

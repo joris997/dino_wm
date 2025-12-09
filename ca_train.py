@@ -154,17 +154,20 @@ class Trainer:
         self.decoder = None
         self.action_decoder = None
         self.proprio_decoder = None
+        self.behavioral_cloner = None
         self.train_encoder = self.cfg.model.train_encoder
         self.train_predictor = self.cfg.model.train_predictor
         self.train_decoder = self.cfg.model.train_decoder
         self.train_action_decoder = self.cfg.model.train_action_decoder
         self.train_proprio_decoder = self.cfg.model.train_proprio_decoder
+        self.train_behavioral_cloner = self.cfg.model.train_behavioral_cloner
         log.info(f"Train encoder, predictor, decoder:\
             {self.cfg.model.train_encoder}\
             {self.cfg.model.train_predictor}\
             {self.cfg.model.train_decoder}\
             {self.cfg.model.train_action_decoder}\
-            {self.cfg.model.train_proprio_decoder}")
+            {self.cfg.model.train_proprio_decoder}\
+            {self.cfg.model.train_behavioral_cloner}")
 
         self._keys_to_save = [
             "epoch",
@@ -181,6 +184,7 @@ class Trainer:
             ["decoder"] if self.train_decoder else []
         )
         self._keys_to_save += ["action_encoder", "proprio_encoder", "action_decoder", "proprio_decoder"]
+        self._keys_to_save += ["behavioral_cloner"]
 
         self.init_models()
         self.init_optimizers()
@@ -343,9 +347,20 @@ class Trainer:
                 for param in self.proprio_decoder.parameters():
                     param.requires_grad = False
 
+        # initialize behavioral cloner
+        if self.cfg.has_behavioral_cloner:
+            if self.behavioral_cloner is None:
+                self.behavioral_cloner = hydra.utils.instantiate(
+                    self.cfg.behavioral_cloner,
+                    num_hist=self.cfg.num_hist,
+                    action_dim=self.cfg.action_emb_dim,
+                )
+            if not self.train_behavioral_cloner:
+                for param in self.behavioral_cloner.parameters():
+                    param.requires_grad = False
 
-        self.encoder, self.predictor, self.decoder, self.action_decoder, self.proprio_decoder = self.accelerator.prepare(
-            self.encoder, self.predictor, self.decoder, self.action_decoder, self.proprio_decoder
+        self.encoder, self.predictor, self.decoder, self.action_decoder, self.proprio_decoder, self.behavioral_cloner= self.accelerator.prepare(
+            self.encoder, self.predictor, self.decoder, self.action_decoder, self.proprio_decoder, self.behavioral_cloner
         )
 
         self.model = hydra.utils.instantiate(
@@ -357,6 +372,7 @@ class Trainer:
             decoder=self.decoder,
             action_decoder=self.action_decoder,
             proprio_decoder=self.proprio_decoder,
+            behavioral_cloner=self.behavioral_cloner,
             proprio_dim=proprio_emb_dim,
             action_dim=action_emb_dim,
             num_action_repeat=self.cfg.num_action_repeat,
