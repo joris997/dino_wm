@@ -25,7 +25,8 @@ from utils import load_vit
 folder = '/home/none/gits/dino_wm/outputs'
 # run = '2025-12-02/21-40-54'
 # run = '2025-12-03/23-14-57'
-run = '2025-12-04/15-39-40'
+# run = '2025-12-04/15-39-40'
+run = '2025-12-09/15-10-22'
 ckpt_folder = os.path.join(folder, run)
 
 # world model
@@ -125,7 +126,7 @@ while True:
 
     # cost and constraints
     # cost = cp.quad_form(u.flatten(), np.eye(cfg.frameskip * act.shape[-1]))
-    cost = cp.quad_form(u.flatten() - uGoal, np.eye(cfg.frameskip * act.shape[-1]))   
+    cost = cp.quad_form(u.flatten(order='C') - uGoal, np.eye(cfg.frameskip * act.shape[-1]))   
     constraints = []
     constraints.append(
         dVdz_val @ fz_val + dVdz_val @ gz_val @ u <= -0.9 * V_val

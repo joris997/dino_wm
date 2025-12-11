@@ -12,6 +12,7 @@ from models.ca_visual_world_model import VWorldModel
 from models.ca_vit import ViTPredictor
 from models.dino import DinoV3Encoder
 from models.proprio import ProprioceptiveEmbedding, ProprioceptiveDecoding
+from models.behavioral_cloner import BehavioralCloner
 from models.vqvae import VQVAE
 from datasets.pusht_dset import PushTDataset
 
@@ -167,6 +168,13 @@ def load_vit(checkpoint_folder:str):
     decoder.load_state_dict(payload['decoder'].state_dict())
     decoder.eval()
 
+    #! create behavioral cloner
+    behavioral_cloner = BehavioralCloner(num_hist=cfg.num_hist,
+                                        action_dim=cfg.action_emb_dim,
+                                        num_gaussians=5)
+    behavioral_cloner.load_state_dict(payload['behavioral_cloner'].state_dict())
+    behavioral_cloner.eval()
+
     #! create world model
     predictor = ViTPredictor(num_patches=196,
                             num_frames=cfg.num_hist-1,
@@ -190,6 +198,7 @@ def load_vit(checkpoint_folder:str):
                             action_encoder=action_encoder,
                             action_decoder=action_decoder,
                             proprio_decoder=proprio_decoder,
+                            behavioral_cloner=behavioral_cloner,
                             decoder=decoder,
                             cfg_dict=cfg,
                             action_dim=cfg.action_emb_dim,

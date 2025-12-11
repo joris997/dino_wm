@@ -23,7 +23,8 @@ from utils import load_vit
 folder = '/home/none/gits/dino_wm/outputs'
 # run = '2025-12-02/21-40-54'
 # run = '2025-12-03/23-14-57'
-run = '2025-12-04/15-39-40'
+# run = '2025-12-04/15-39-40'
+run = '2025-12-09/15-10-22'
 ckpt_folder = os.path.join(folder, run)
 
 # world model
@@ -40,7 +41,7 @@ dataset = PushTDataset(n_rollout=50,
 # get a range of data
 # obs: dict, ['visual']: [100, C, H, W], ['proprio']: [100, P]
 # act: [100, A]
-obs, act, state, _ = dataset.get_frames(0, range(100))
+obs, act, state, _ = dataset.get_frames(4, range(100))
 
 # preprocessor to denormalize actions/states/proprios
 data_preprocessor = Preprocessor(action_mean=dataset.action_mean,

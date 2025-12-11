@@ -120,7 +120,7 @@ class VWorldModel(nn.Module):
         if self.behavioral_cloner is not None:
             self.behavioral_cloner.eval()
 
-    def encode(self, obs, act): 
+    def encode(self, obs, act, with_pred=False): 
         """
         This method encodes the observation and actions seperately, and appends
         the proprioception to the visual embeddings. It does not append the action
@@ -132,6 +132,9 @@ class VWorldModel(nn.Module):
                  z (tensor): (b, num_frames, num_patches, emb_dim)
                  u (tensor): (b, num_frames, num_patches, action_emb_dim)
         """
+        assert obs['visual'].shape[1] == act.shape[1]-1, "Number of frames in act should be one more than in obs"
+
+
         self.print(f"\n\tVWorldModel encode:")
         o_dct = self.encode_obs(obs)
         o, p = o_dct['visual'], o_dct['proprio']
@@ -152,7 +155,10 @@ class VWorldModel(nn.Module):
         )  # (b, num_frames, num_patches, dim + proprio_dim + action_dim)
         
         # the u is now only the current u + the next u (used for behavioral cloner model)!
-        u = act_emb[:, -2:, ...]
+        if with_pred:
+            u = act_emb[:, -2:, ...]
+        else:
+            u = act_emb[:, -1:, ...]
         return o, z, u
     
     def encode_act(self, act):
@@ -310,7 +316,7 @@ class VWorldModel(nn.Module):
 
         loss = 0
         loss_components = {}
-        o, z, u = self.encode(obs, act)
+        o, z, u = self.encode(obs, act, with_pred=True)
         self.print(f"act: {act}")
         self.print(f"o.shape: {o.shape}, z.shape: {z.shape}, u.shape: {u.shape}")
         # for the targets, we remove 1 index as the last observation is removed to align it with the action history
@@ -319,7 +325,7 @@ class VWorldModel(nn.Module):
         z_src = z[:, : self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
         z_tgt = z[:, 1:1 + self.local_hist, :, :]  # (b, num_hist, num_patches, dim)
         u_src = u[:, :1, :, :]  # (b, 1, action_dim)
-        u_tgt = u[:, 1:2, :, :]  # (b, 1, action_dim)
+        u_tgt = u[:, 1:2, :, :]  # (b, 1, action_dim), this is used for the behavioral cloner target!
         visual_src = obs['visual'][:, :self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
         visual_tgt = obs['visual'][:, 1:1 + self.local_hist, ...]  # (b, num_hist, 3, img_size, img_size)
         proprio_src = obs['proprio'][:, :self.local_hist, ...]  # (b, num_hist, proprio_dim)
