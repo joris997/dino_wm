@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - env: point_maze
+  - env: pusht
   - encoder: dinov3 
   - action_encoder: proprio
   - action_decoder: proprio
@@ -81,7 +81,7 @@ model:
   train_proprio_decoder: True
   train_behavioral_cloner: True
 
-debug: True
+debug: False
 
 # Planning params for planning eval jobs launched during training
 plan_settings: 

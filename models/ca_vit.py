@@ -211,12 +211,6 @@ class ViTPredictor(nn.Module):
             nn.Linear(hidden, self.dim * self.action_dim)
         )
         self.pool = pool
-
-        # old pos emb
-        self.pos_embedding_old = nn.Parameter(torch.randn(1, num_frames * (num_patches), dim+10)) # dim for the pos encodings
-        self.dropout_old = nn.Dropout(emb_dropout)
-        self.transformer_old = Transformer(dim+10, depth, heads, dim_head, mlp_dim, dropout)
-        self.pool_old = pool
     
     def print(self, *args):
         if self.debug:
