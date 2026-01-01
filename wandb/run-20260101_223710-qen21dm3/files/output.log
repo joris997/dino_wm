@@ -1,0 +1,14 @@
+dict_keys(['epoch', 'predictor', 'decoder', 'action_encoder', 'proprio_encoder', 'action_decoder', 'proprio_decoder', 'behavioral_cloner'])
+obss['visual'].shape: torch.Size([1, 3, 3, 224, 224]), obss['proprio'].shape: torch.Size([1, 3, 4]), acts.shape: torch.Size([1, 4, 6])
+n_u for setting action_space: [-10. -10. -10. -10. -10. -10.]
+Traceback (most recent call last):
+  File "/home/planiacs/gits/dino_wm/RL/main.py", line 118, in <module>
+    u_noise = NormalActionNoise(mean=env.world_model.cfg_dict.frameskip*np.zeros(n_u),
+                                    ^^^^^^^^^^^^^^^
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/vec_env/base_vec_env.py", line 439, in __getattr__
+    return self.getattr_recursive(name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/vec_env/base_vec_env.py", line 464, in getattr_recursive
+    attr = getattr(self.venv, name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'DummyVecEnv' object has no attribute 'world_model'

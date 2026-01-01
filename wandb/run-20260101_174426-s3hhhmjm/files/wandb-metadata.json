@@ -1,0 +1,40 @@
+{
+  "os": "Linux-6.16.3-76061603-generic-x86_64-with-glibc2.35",
+  "python": "CPython 3.12.11",
+  "startedAt": "2026-01-01T16:44:26.758088Z",
+  "program": "/home/planiacs/gits/dino_wm/RL/main.py",
+  "codePath": "RL/main.py",
+  "codePathLocal": "RL/main.py",
+  "git": {
+    "remote": "git@github.com:joris997/dino_wm.git",
+    "commit": "5f852ce2fc5e950c420ed49287ad9a02d8394c98"
+  },
+  "email": "jorisv@kth.se",
+  "root": "/home/planiacs/gits/dino_wm",
+  "host": "pop-os",
+  "executable": "/home/planiacs/miniconda3/envs/dino_wm_py312/bin/python",
+  "cpu_count": 8,
+  "cpu_count_logical": 16,
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "1958333022208",
+      "used": "89235607552"
+    }
+  },
+  "memory": {
+    "total": "64896692224"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 5090",
+      "memoryTotal": "34190917632",
+      "cudaCores": 21760,
+      "architecture": "Blackwell",
+      "uuid": "GPU-3d635f82-9594-3f4d-81e3-8b53e700ca8a"
+    }
+  ],
+  "cudaVersion": "13.0",
+  "writerId": "7xcs22hbmjwlv8imsksiy2l67engincs"
+}

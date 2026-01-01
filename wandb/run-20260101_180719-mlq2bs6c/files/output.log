@@ -1,0 +1,20 @@
+[34m[1mwandb[0m: [33mWARNING[0m Found log directory outside of given root_logdir, dropping given root_logdir for event file in logs
+[34m[1mwandb[0m: [33mWARNING[0m Found log directory outside of given root_logdir, dropping given root_logdir for event file in logs
+dict_keys(['epoch', 'predictor', 'decoder', 'action_encoder', 'proprio_encoder', 'action_decoder', 'proprio_decoder', 'behavioral_cloner'])
+obss['visual'].shape: torch.Size([1, 3, 3, 224, 224]), obss['proprio'].shape: torch.Size([1, 3, 4]), acts.shape: torch.Size([1, 4, 6])
+[34m[1mwandb[0m: [33mWARNING[0m Found log directory outside of given root_logdir, dropping given root_logdir for event file in logs
+Traceback (most recent call last):
+  File "/home/planiacs/gits/dino_wm/RL/main.py", line 117, in <module>
+    model = TD3("MlpPolicy", env, action_noise=u_noise, verbose=0,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/td3/td3.py", line 140, in __init__
+    self._setup_model()
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/td3/td3.py", line 143, in _setup_model
+    super()._setup_model()
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/off_policy_algorithm.py", line 196, in _setup_model
+    self.replay_buffer = self.replay_buffer_class(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/buffers.py", line 213, in __init__
+    self.observations = np.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=observation_space.dtype)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 885. GiB for an array with shape (1000000, 1, 237552) and data type int32

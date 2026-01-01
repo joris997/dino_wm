@@ -1,0 +1,42 @@
+<mujoco model="planar_push_env">
+    <compiler angle="radian" coordinate="local"/>
+    <option timestep="0.1" gravity="0 0 -9.81" integrator="RK4"/>
+    
+    <worldbody>
+        <!-- Bounding Box -->
+        <geom name="floor" type="plane" size="5 5 0.01" rgba="0.8 0.8 0.8 1" friction="0.001 0.02 0.02"
+                            contype="1" conaffinity="1"/>
+        <geom name="wall_left" type="box" pos="-5 0 0.1" size="0.1 5 0.1" rgba="0 0 0 1"/>
+        <geom name="wall_right" type="box" pos="5 0 0.1" size="0.1 5 0.1" rgba="0 0 0 1"/>
+        <geom name="wall_top" type="box" pos="0 5 0.1" size="5 0.1 0.1" rgba="0 0 0 1"/>
+        <geom name="wall_bottom" type="box" pos="0 -5 0.1" size="5 0.1 0.1" rgba="0 0 0 1"/>
+        
+        <!-- Goal Area -->
+        <!-- Size is 0.5 which is half the side -->
+        <geom name="area1" type="box" pos="-2 -2 0.01" size="0.5 0.5 0.01" rgba="1 1 0 1" contype="0" conaffinity="0"/>
+        <geom name="area2" type="box" pos="2 -2 0.01" size="0.5 0.5 0.01" rgba="1 0 1 1" contype="0" conaffinity="0"/>
+        <geom name="area3" type="box" pos="-2 2 0.01" size="0.5 0.5 0.01" rgba="0 1 1 1" contype="0" conaffinity="0"/>
+        <geom name="area4" type="box" pos="2 2 0.01" size="0.5 0.5 0.01" rgba="0 1 0 1" contype="0" conaffinity="0"/>
+        
+        <!-- Movable Red Cylinder -->
+        <body name="circle" pos="-1.0 -1.0 0.1">
+            <!-- <joint name="circle_free" type="free"/> -->
+            <geom type="cylinder" size="0.8 0.1 0.1" rgba="1 0 0 1" density="50" friction="0.01 0.02 0.02"
+                                    contype="1" conaffinity="0"/>
+            <joint name="circle_slidex" type ="slide" axis="1 0 0" pos="0 0 0" range="-3 5" limited="true"/>
+            <joint name="circle_slidey" type ="slide" axis="0 1 0" pos="0 0 0" range="-3 5" limited="true"/>
+        </body>
+        
+        <!-- Top-down Camera -->
+        <camera name="topdown" pos="0 0 12" zaxis="0 0 1"/>
+        
+        <!-- Obstacle in the center (non-colliding) -->
+        <geom name="obstacle" type="box" pos="0 0 0.01" size="0.5 0.5 0.01" rgba="0 0 0 1" contype="0" conaffinity="0"/>
+    </worldbody>
+
+    <actuator>
+        <!-- Direct forces on the red cylinder -->
+        <general name="force_x" joint="circle_slidex" ctrlrange="-10 10"/>
+        <general name="force_y" joint="circle_slidey" ctrlrange="-10 10"/>
+    </actuator>
+</mujoco>

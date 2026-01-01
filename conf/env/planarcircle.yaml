@@ -9,7 +9,7 @@ dataset:
   with_velocity: true
   n_rollout: null
   normalize_action: ${normalize_action}
-  data_path: ${oc.env:DATASET_DIR}/planarcircle/planarcircle_A_to_B
+  data_path: ${oc.env:DATASET_DIR}/planarcircle/A_to_B
   split_ratio: 0.9
   transform:
     _target_: "datasets.img_transforms.default_transform"

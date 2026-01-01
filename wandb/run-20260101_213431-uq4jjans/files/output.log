@@ -1,0 +1,50 @@
+[34m[1mwandb[0m: [33mWARNING[0m Found log directory outside of given root_logdir, dropping given root_logdir for event file in logs
+[34m[1mwandb[0m: [33mWARNING[0m Found log directory outside of given root_logdir, dropping given root_logdir for event file in logs
+dict_keys(['epoch', 'predictor', 'decoder', 'action_encoder', 'proprio_encoder', 'action_decoder', 'proprio_decoder', 'behavioral_cloner'])
+obss['visual'].shape: torch.Size([1, 3, 3, 224, 224]), obss['proprio'].shape: torch.Size([1, 3, 4]), acts.shape: torch.Size([1, 4, 6])
+n_u for setting action_space: [-10. -10. -10. -10. -10. -10.]
+[34m[1mwandb[0m: [33mWARNING[0m Found log directory outside of given root_logdir, dropping given root_logdir for event file in logs
+Created model with policy: ActorCriticPolicy(
+  (features_extractor): FlattenExtractor(
+    (flatten): Flatten(start_dim=1, end_dim=-1)
+  )
+  (pi_features_extractor): FlattenExtractor(
+    (flatten): Flatten(start_dim=1, end_dim=-1)
+  )
+  (vf_features_extractor): FlattenExtractor(
+    (flatten): Flatten(start_dim=1, end_dim=-1)
+  )
+  (mlp_extractor): MlpExtractor(
+    (policy_net): Sequential(
+      (0): Linear(in_features=237552, out_features=128, bias=True)
+      (1): Tanh()
+      (2): Linear(in_features=128, out_features=128, bias=True)
+      (3): Tanh()
+      (4): Linear(in_features=128, out_features=128, bias=True)
+      (5): Tanh()
+    )
+    (value_net): Sequential()
+  )
+  (action_net): Linear(in_features=128, out_features=6, bias=True)
+  (value_net): Linear(in_features=237552, out_features=1, bias=True)
+)
+proprio.shape: torch.Size([1, 4])
+obs['visual'].shape: torch.Size([1, 3, 3, 224, 224]), obs['proprio'].shape: torch.Size([1, 3, 4]), act.shape: torch.Size([1, 4, 6])
+Traceback (most recent call last):
+  File "/home/planiacs/gits/dino_wm/RL/main.py", line 132, in <module>
+    model.learn(total_timesteps=200_000,progress_bar=True)
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/ppo/ppo.py", line 311, in learn
+    return super().learn(
+           ^^^^^^^^^^^^^^
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/on_policy_algorithm.py", line 311, in learn
+    total_timesteps, callback = self._setup_learn(
+                                ^^^^^^^^^^^^^^^^^^
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/base_class.py", line 423, in _setup_learn
+    self._last_obs = self.env.reset()  # type: ignore[assignment]
+                     ^^^^^^^^^^^^^^^^
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/vec_env/dummy_vec_env.py", line 79, in reset
+    self._save_obs(env_idx, obs)
+  File "/home/planiacs/miniconda3/envs/dino_wm_py312/lib/python3.12/site-packages/stable_baselines3/common/vec_env/dummy_vec_env.py", line 109, in _save_obs
+    self.buf_obs[key][env_idx] = obs
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^
+ValueError: could not broadcast input array from shape (3,196,404) into shape (237552,)

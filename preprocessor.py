@@ -36,12 +36,24 @@ class Preprocessor:
         input shape (..., proprio_dim)
         '''
         return (proprio - self.proprio_mean) / self.proprio_std
+    
+    def denormalize_proprios(self, proprio):
+        '''
+        input shape (..., proprio_dim)
+        '''
+        return proprio * self.proprio_std + self.proprio_mean
 
     def normalize_states(self, state):
         '''
         input shape (..., state_dim)
         '''
         return (state - self.state_mean) / self.state_std
+    
+    def denormalize_states(self, state):
+        '''
+        input shape (..., state_dim)
+        '''
+        return state * self.state_std + self.state_mean
 
     def preprocess_obs_visual(self, obs_visual):
         return rearrange(obs_visual, "b t h w c -> b t c h w") / 255.0

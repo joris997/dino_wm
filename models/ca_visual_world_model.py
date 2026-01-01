@@ -494,7 +494,7 @@ class VWorldModel(nn.Module):
         is considered to be the current control input.
         """
         self.print(f"\n\nVWorldModel take_step:")
-        self.print(f"obs['visual'].shape: {obs['visual'].shape}, obs['proprio'].shape: {obs['proprio'].shape}, act.shape: {act.shape}")
+        print(f"obs['visual'].shape: {obs['visual'].shape}, obs['proprio'].shape: {obs['proprio'].shape}, act.shape: {act.shape}")
         if obs['visual'].shape[1] == act.shape[1]:
             # if obs and act dimension match, remove the first observation
             # such that later we can append n_hist-1 actions

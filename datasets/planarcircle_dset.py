@@ -10,8 +10,8 @@ from .traj_dset import TrajDataset, TrajSlicerDataset
 from typing import Optional, Callable, Any
 decord.bridge.set_bridge("torch")
 
-# count the number of files in the /datasets/data/planarcircle/planarcircle_A_to_B/thread_0/ directory
-# data_path = Path("datasets/data/planarcircle/planarcircle_A_to_B/thread_0/")
+# count the number of files in the /datasets/data/planarcircle/A_to_B/thread_0/ directory
+# data_path = Path("datasets/data/planarcircle/A_to_B/thread_0/")
 # num_files = len(list(data_path.glob("rollout_*.npz")))
 # # get the length of a rollout
 # with open(data_path / "rollout_0.npz", "rb") as f:
@@ -56,7 +56,7 @@ class PlanarCircleDataset(TrajDataset):
             self,
             n_rollout: Optional[int] = None,
             transform: Optional[Callable] = None,
-            data_path: str = "data/planarcircle_A_to_B",
+            data_path: str = "data/planarcircle/A_to_B",
             normalize_action: bool = True,
             relative=True,
             action_scale=10.0,
@@ -157,9 +157,9 @@ class PlanarCircleDataset(TrajDataset):
         image = image / 255.0
         image = rearrange(image, "b h w c -> b c h w")
         if self.transform:
-            selected_frames = self.transform(image)
+            image = self.transform(image)
         # pack it up
-        obs = {"visual": selected_frames, "proprio": proprio[frames]}
+        obs = {"visual": image, "proprio": proprio[frames]}
         act = actions[frames]
         state = states[frames]
         return obs, act, state, {'shape': 'circle'}
@@ -179,7 +179,7 @@ class PlanarCircleDataset(TrajDataset):
 def load_planarcircle_slice_train_val(
     transform,
     n_rollout=50,
-    data_path="data/planarcircle_A_to_B",
+    data_path="data/planarcircle/A_to_B",
     normalize_action=True,
     split_ratio=0.8,
     num_hist=0,

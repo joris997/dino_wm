@@ -112,7 +112,7 @@ def strip_targets_from_cfg(cfg):
         del cfg_dict[key]
     return cfg_dict
 
-def load_vit(checkpoint_folder:str):
+def load_vit(checkpoint_folder:str) -> VWorldModel | dict:
     model_ckpt = os.path.join(checkpoint_folder, 'checkpoints', 'model_latest.pth')
     with open(model_ckpt, "rb") as f:
         payload = torch.load(f, map_location='cpu', weights_only=False)
@@ -136,7 +136,7 @@ def load_vit(checkpoint_folder:str):
     #! create action encoder 
     action_encoder = ProprioceptiveEmbedding(num_frames=cfg.action_encoder.num_frames,
                                             tubelet_size=cfg.action_encoder.tubelet_size,
-                                            in_chans=10,
+                                            in_chans=cfg.frameskip * 2,
                                             emb_dim=cfg.action_emb_dim,
                                             use_3d_pos=cfg.action_encoder.use_3d_pos)
     action_encoder.load_state_dict(payload['action_encoder'].state_dict())
@@ -145,7 +145,7 @@ def load_vit(checkpoint_folder:str):
     #! create action decoder
     action_decoder = ProprioceptiveDecoding(num_frames=cfg.action_decoder.num_frames,
                                             tubelet_size=cfg.action_decoder.tubelet_size,
-                                            out_chans=10,
+                                            out_chans=cfg.frameskip * 2,
                                             emb_dim=cfg.action_emb_dim)
     action_decoder.load_state_dict(payload['action_decoder'].state_dict())
     action_decoder.eval()

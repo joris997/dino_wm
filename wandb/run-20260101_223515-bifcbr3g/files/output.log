@@ -1,0 +1,8 @@
+dict_keys(['epoch', 'predictor', 'decoder', 'action_encoder', 'proprio_encoder', 'action_decoder', 'proprio_decoder', 'behavioral_cloner'])
+obss['visual'].shape: torch.Size([1, 3, 3, 224, 224]), obss['proprio'].shape: torch.Size([1, 3, 4]), acts.shape: torch.Size([1, 4, 6])
+n_u for setting action_space: [-10. -10. -10. -10. -10. -10.]
+Traceback (most recent call last):
+  File "/home/planiacs/gits/dino_wm/RL/main.py", line 110, in <module>
+    f"logs/{run.id}/videos",
+            ^^^^^^
+AttributeError: 'str' object has no attribute 'id'
