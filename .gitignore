@@ -5,3 +5,4 @@ plan_outputs
 datasets/data
 logs
 wandb
+exp_dir

@@ -61,7 +61,7 @@ class LatentPlanarCircleEnv(gym.Env):
         # total latent state by multiplying the sizes
         LSIZE = np.prod(self.target_state.shape)
         self.observation_space = spaces.Box(low=-1e4, high=1e4, shape=(LSIZE,), dtype=np.int32)
-        print(f"n_u for setting action_space: {np.repeat(self.real_env.action_space.low, self.world_model.cfg_dict.frameskip)}")
+        # print(f"n_u for setting action_space: {np.repeat(self.real_env.action_space.low, self.world_model.cfg_dict.frameskip)}")
         self.action_space = spaces.Box(low=np.repeat(self.real_env.action_space.low, self.world_model.cfg_dict.frameskip), 
                                        high=np.repeat(self.real_env.action_space.high, self.world_model.cfg_dict.frameskip),
                                        dtype=np.float32)
@@ -104,18 +104,28 @@ class LatentPlanarCircleEnv(gym.Env):
         
         proprio, info = self.real_env.reset()
         proprio = torch.from_numpy(proprio.reshape(1,-1)).float().to('cuda')
-        print(f"proprio.shape: {proprio.shape}")
-        observation = self.real_env.render()
-        observation = torch.from_numpy(observation.copy()).float().permute(2,0,1).unsqueeze(0).to('cuda') # add hist size
+        # print(f"proprio.shape: {proprio.shape}")
+        observation_ = self.real_env.render()
+        observation = torch.from_numpy(observation_.copy()).float().permute(2,0,1).unsqueeze(0).to('cuda')/255.0 # add hist size
         obs = {'visual': torch.repeat_interleave(observation.unsqueeze(0), self.world_model.local_hist, dim=1).to('cuda'), # add batch size
                'proprio': torch.repeat_interleave(proprio.unsqueeze(0), self.world_model.local_hist, dim=1).to('cuda')} # add batch size
         
         random_action = self.real_env.action_space.sample()
         act = torch.zeros((1, self.world_model.num_hist, random_action.shape[-1]*self.world_model.cfg_dict.frameskip), device='cuda')
-        print(f"obs['visual'].shape: {obs['visual'].shape}, obs['proprio'].shape: {obs['proprio'].shape}, act.shape: {act.shape}")
+        # print(f"obs['visual'].shape: {obs['visual'].shape}, obs['proprio'].shape: {obs['proprio'].shape}, act.shape: {act.shape}")
         
         o,z,u = self.world_model.encode(obs, act)
         self.z = z
+
+        # fig, ax = plt.subplots(figsize=(4,4))
+        # latent_obs = self.get_latent_obs(self.z)
+        # ax.imshow(latent_obs)
+        # # ax.imshow(observation_)
+        # # print(f"max(observation_): {np.max(observation_)}, min(observation_): {np.min(observation_)}")
+        # # ax.imshow(obs['visual'][0,-1].permute(1,2,0).cpu().numpy()/255.0, alpha=0.5)
+        # ax.axis('off')
+        # fig.savefig("temp_latent_reset.png", bbox_inches='tight', pad_inches=0)
+        # plt.close(fig)
         return self._flatten_latent(z)
     
     def reset(self,
@@ -130,12 +140,14 @@ class LatentPlanarCircleEnv(gym.Env):
         with torch.no_grad():
             # decode only the visual part
             obs, _ = self.world_model.decode_obs(self._get_visual_from_latent(latent))
-            np_obs = obs['visual'][0,0].permute(1,2,0).cpu().numpy()
-            np_obs = np.clip((np_obs+1)/2, 0, 1)
-        return np_obs
+            latent_obs = obs['visual'][0,-1].permute(1,2,0).cpu().numpy()
+            latent_obs = np.clip((latent_obs+1)/2, 0, 1)
+        
+        # VecVideoRecorder expects (0,255) range
+        return latent_obs*255.0
 
     def render(self)->np.ndarray:
-        y = self.get_latent_obs(self.z)
+        y = self.get_latent_obs(self.z).astype(np.uint8)
 
         if self.render_mode == "human":
             plt.imshow(y)

@@ -4,6 +4,7 @@ Generating data from the CarRacing gym environment.
 import os
 import sys
 import matplotlib.pyplot as plt
+import cv2
 
 import argparse
 from os.path import join, exists
@@ -98,7 +99,6 @@ def generate_data(rollouts, data_dir, noise_type): # pylint: disable=R0914
                          infos=np.array(i_rollout[:-1],dtype=object))
                 # save video to mp4 format
                 video_path = join(data_dir, 'rollout_{}.mp4'.format(i))
-                import cv2
                 height, width, _ = s_rollout[0].shape
                 video = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height))
                 for frame in s_rollout[1:]:
