@@ -41,6 +41,8 @@ class LatentPlanarCircleEnv(gym.Env):
                  camera_width:int=64,
                  camera_height:int=64,
                  reset_to_state:Optional[np.ndarray]=None,
+                 
+                 step_in_real_env:bool=False,
 
                  log_dir:str="logs",
                  **kwargs):
@@ -49,6 +51,7 @@ class LatentPlanarCircleEnv(gym.Env):
         self.world_model = world_model
         self.preprocessor = preprocessor
         self.target_state = target_state
+        print(f"target_state.shape: {self.target_state.shape}")
         self.epsilon = 0.1
         self.weights = weights
 
@@ -58,9 +61,11 @@ class LatentPlanarCircleEnv(gym.Env):
         self.camera_height = camera_height
         self.reset_to_state = reset_to_state
 
+        self.step_in_real_env = step_in_real_env
+
         # total latent state by multiplying the sizes
         LSIZE = np.prod(self.target_state.shape)
-        self.observation_space = spaces.Box(low=-1e4, high=1e4, shape=(LSIZE,), dtype=np.int32)
+        self.observation_space = spaces.Box(low=-1e4, high=1e4, shape=(3,196,404), dtype=np.int32)
         # print(f"n_u for setting action_space: {np.repeat(self.real_env.action_space.low, self.world_model.cfg_dict.frameskip)}")
         self.action_space = spaces.Box(low=np.repeat(self.real_env.action_space.low, self.world_model.cfg_dict.frameskip), 
                                        high=np.repeat(self.real_env.action_space.high, self.world_model.cfg_dict.frameskip),
@@ -69,27 +74,67 @@ class LatentPlanarCircleEnv(gym.Env):
         self.writer = SummaryWriter(log_dir=log_dir, flush_secs=1)
 
     def step(self, action:np.ndarray)->np.ndarray | np.float64 | bool | bool | dict:
-        # reshapce (local_hist*2) to (local_hist, 2)
+        """ 
+        Take a step in the environment, either by taking the action in the real environment and updating z
+        based on the updated image of the real environment, or by taking the action in the latent world model
+        and using the predicted latent state as the new z.
+        In:
+            action: np.ndarray of shape (local_hist*2,)
+            step_in_real_env: bool, whether to take the action in the real environment and update z or just stay in latent space
+        Out:
+            obs: np.ndarray of shape (LSIZE,)
+            reward: float
+            done: bool
+            info: dict
+        """
+        # reshape (local_hist*2) to (local_hist, 2)
         action = action.reshape(self.world_model.cfg_dict.frameskip, 2)
         # take the action in the real environments
         for a in action:
             self.real_env.step(a)
 
-        # take the action in the latent environment
         action = torch.tensor(action).float().to('cuda')
         action = self.preprocessor.normalize_actions(action).reshape(1,-1).unsqueeze(0)
-        with torch.no_grad():
-            u_now = self.world_model.encode_act(action)
-            z_pred, dz_pred = self.world_model.predict(self.z[:, -self.world_model.local_hist:],
-                                                       u_now)
-            self.z = torch.cat((self.z[:,1:,...], z_pred[:,-1:,...]), dim=1)
-            self.flat_z = self._flatten_latent(self.z)
+        
+        # take the action in the latent environment
+        if self.step_in_real_env:
+            obs = torch.from_numpy(self.real_env.render().copy()).float().permute(2,0,1)/255.0
+            obs = obs.unsqueeze(0).unsqueeze(0).to('cuda') # add batch dim and hist size
+            proprio = torch.from_numpy(self.real_env._get_obs()).float()
+            proprio = proprio.unsqueeze(0).unsqueeze(0).to('cuda') # add batch dim 
+            proprio = self.preprocessor.normalize_proprios(proprio)
+            obs_dict = {'visual': obs, 'proprio': proprio}
+            # transform obs to z and encode proprio and actions
+            with torch.no_grad():
+                o_dict = self.world_model.encode_obs(obs_dict)
+                u = self.world_model.encode_act(action)
+            self.z = torch.cat((
+                self.z[:,1:,...],
+                torch.cat([o_dict['visual'],
+                           o_dict['proprio'],
+                           u
+                ], dim=-1)
+            ), dim=1)
+            self.z = self.z.detach()
+
+        else:
+            with torch.no_grad():
+                u_now = self.world_model.encode_act(action)
+                z_pred, dz_pred = self.world_model.predict(self.z[:, -self.world_model.local_hist:],
+                                                           u_now)
+                self.z = torch.cat((self.z[:,1:,...], 
+                                    z_pred[:,-1:,...]), dim=1)
+
+        # create a flat z as per return requirements of gym.Env    
+        self.flat_z = self._flatten_latent(self.z)
 
         if self.render_mode == "human":
             self.render()
 
         # reward is negative 2-norm distance to target state
-        norm = torch.norm(self.z[:, -1, :] - self.target_state).cpu().numpy()
+        # print(f"self.z.shape: {self.z.shape}, self.target_state.shape: {self.target_state.shape}")
+        # remove batch dimension and only take latest time step
+        norm = torch.norm(self.z[0,-1,...] - self.target_state[0,-1,...]).cpu().numpy()
         reward = -self.weights['goal_distance'] * norm
         # we're done if we're within epsilon of the target state
         done = reward > -self.epsilon
@@ -158,7 +203,9 @@ class LatentPlanarCircleEnv(gym.Env):
             return y
     
     def _get_obs(self)->np.ndarray:
-        return self._flatten_latent(self.z).detach().cpu().numpy()#np.squeeze(self.z.detach().cpu().numpy())
+        # just return z but remove batch dimension
+        return self.z[0,...].detach().cpu().numpy()
+        # return self._flatten_latent(self.z).detach().cpu().numpy()#np.squeeze(self.z.detach().cpu().numpy())
 
     def _flatten_latent(self, latent:torch.Tensor)->torch.Tensor:
         """ Flatten latent tensor """

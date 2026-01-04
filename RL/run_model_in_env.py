@@ -25,29 +25,40 @@ import matplotlib.pyplot as plt
 import torch
 import cv2
 
-folder = '/home/planiacs/gits/dino_wm/logs'
-run_folder = '2026-01-02/10-44-04'
-ckpt_folder = os.path.join(folder, run_folder, 'models')
+env = make_env(step_in_real_env=True)
 
-env = make_env()
+folder = '/home/planiacs/gits/dino_wm/logs'
+# run_folder = '2026-01-03/16-06-56'
+# run_folder = '2026-01-03/22-55-08'
+run_folder = '2026-01-04/14-00-43'
+ckpt_folder = os.path.join(folder, run_folder, 'models')
 
 # load the model
 policy = "PPO"
 if policy == "TD3":
-    model = TD3.load(f"exp_dir/controller/{policy}_latent_dynamics", env=env)
+    model = TD3.load(f"logs/{run_folder}/models/{policy}_latent_dynamics", env=env)
 elif policy == "PPO":
-    model = PPO.load(f"exp_dir/controller/{policy}_latent_dynamics", env=env)
+    model = PPO.load(f"logs/{run_folder}/models/{policy}_latent_dynamics", env=env)
 elif policy == "SAC":
-    model = SAC.load(f"exp_dir/controller/{policy}_latent_dynamics", env=env)
+    model = SAC.load(f"logs/{run_folder}/models/{policy}_latent_dynamics", env=env)
 z, _ = env.reset()
 
 # evaluate the model 
 zs, obss, rewards, dones = [], [], [], []
 for i in range(100):
     action, _ = model.predict(z, deterministic=True)
-    z, reward, done, _, _ = env.step(action)
+    # z, reward, done, _, _ = env.step(action)
+    z, reward, done, _, _ = env.step(action)#, step_in_real_env=False)
     obs = env.render()
     print(f"Step {i}: reward={reward}, done={done}")
+    if i % (env.env._max_episode_steps) == 0:
+        # create red border for the last frame
+        obs[:5,:,:] = [255,0,0]
+        obs[-5:,:,:] = [255,0,0]
+        obs[:,:5,:] = [255,0,0]
+        obs[:,-5:,:] = [255,0,0]
+        z, _ = env.reset()
+        print("Resetting environment")
 
     zs.append(z)
     obss.append(obs)
