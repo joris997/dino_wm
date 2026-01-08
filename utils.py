@@ -189,7 +189,20 @@ def load_vit(checkpoint_folder:str) -> VWorldModel | dict:
     predictor.load_state_dict(payload['predictor'].state_dict())
     predictor.eval()
 
-    # Finally create the world model
+    #! load mean and std of the world model (if available)
+    try:
+        # load z mean and std info for the RL cost
+        z_mean = torch.from_numpy(np.load(os.path.join(checkpoint_folder, 'latent_mean.npy')))
+        z_std = torch.from_numpy(np.load(os.path.join(checkpoint_folder, 'latent_std.npy')))
+        print(f"Loaded latent mean and std with shapes: {z_mean.shape}, {z_std.shape}")
+    except Exception as e:
+        print(f"Could not load latent mean and std: {e}")
+        z_mean = torch.zeros((196, 404))
+        z_std = torch.ones((196, 404))
+    latent_info = {'latent_mean': z_mean,
+                   'latent_std': z_std}
+
+    #! Finally create the world model
     world_model = VWorldModel(image_size=cfg.img_size,
                             num_hist=cfg.num_hist,
                             num_pred=cfg.num_pred,
@@ -205,7 +218,8 @@ def load_vit(checkpoint_folder:str) -> VWorldModel | dict:
                             proprio_dim=cfg.proprio_emb_dim,
                             num_action_repeat=cfg.num_action_repeat,
                             num_proprio_repeat=cfg.num_proprio_repeat,
-                            predictor=predictor)
+                            predictor=predictor,
+                            info_dict=latent_info)
     world_model.eval()
     
     return world_model, cfg

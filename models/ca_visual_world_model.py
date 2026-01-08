@@ -23,6 +23,7 @@ class VWorldModel(nn.Module):
         num_action_repeat=7,
         num_proprio_repeat=7,
         cfg_dict=None,
+        info_dict = None,
         train_encoder=True,
         train_predictor=False,
         train_decoder=True,
@@ -32,6 +33,7 @@ class VWorldModel(nn.Module):
     ):
         super().__init__()
         self.cfg_dict = cfg_dict
+        self.info_dict = info_dict # if already trained, contrains info on mean and std of z
 
         self.num_hist = num_hist
         self.local_hist = num_hist - 1 # local history excludes first frame

@@ -34,7 +34,9 @@ class LatentPlanarCircleEnv(gym.Env):
                  world_model:VWorldModel,
                  preprocessor:Preprocessor,
                  target_state:np.ndarray,
+
                  weights:dict={'goal_distance':1.0},
+                 reward_info:dict=None,
 
                  render_mode=None, 
                  camera_id:int=0,
@@ -42,6 +44,7 @@ class LatentPlanarCircleEnv(gym.Env):
                  camera_height:int=64,
                  reset_to_state:Optional[np.ndarray]=None,
                  
+                 average_pool:bool=False,
                  step_in_real_env:bool=False,
 
                  log_dir:str="logs",
@@ -52,8 +55,10 @@ class LatentPlanarCircleEnv(gym.Env):
         self.preprocessor = preprocessor
         self.target_state = target_state
         print(f"target_state.shape: {self.target_state.shape}")
+
         self.epsilon = 0.1
         self.weights = weights
+        self.reward_info = reward_info
 
         self.render_mode = render_mode
         self.camera_id = camera_id
@@ -61,11 +66,14 @@ class LatentPlanarCircleEnv(gym.Env):
         self.camera_height = camera_height
         self.reset_to_state = reset_to_state
 
+        self.average_pool = average_pool
         self.step_in_real_env = step_in_real_env
 
         # total latent state by multiplying the sizes
-        LSIZE = np.prod(self.target_state.shape)
-        self.observation_space = spaces.Box(low=-1e4, high=1e4, shape=(3,196,404), dtype=np.int32)
+        if self.average_pool:
+            self.observation_space = spaces.Box(low=-1e4, high=1e4, shape=(3,404), dtype=np.float32)
+        else:
+            self.observation_space = spaces.Box(low=-1e4, high=1e4, shape=(3,196,384), dtype=np.int32)
         # print(f"n_u for setting action_space: {np.repeat(self.real_env.action_space.low, self.world_model.cfg_dict.frameskip)}")
         self.action_space = spaces.Box(low=np.repeat(self.real_env.action_space.low, self.world_model.cfg_dict.frameskip), 
                                        high=np.repeat(self.real_env.action_space.high, self.world_model.cfg_dict.frameskip),
@@ -116,14 +124,16 @@ class LatentPlanarCircleEnv(gym.Env):
                 ], dim=-1)
             ), dim=1)
             self.z = self.z.detach()
+            self.z_avg = self.z.mean(dim=2)
 
         else:
             with torch.no_grad():
                 u_now = self.world_model.encode_act(action)
                 z_pred, dz_pred = self.world_model.predict(self.z[:, -self.world_model.local_hist:],
                                                            u_now)
-                self.z = torch.cat((self.z[:,1:,...], 
-                                    z_pred[:,-1:,...]), dim=1)
+            self.z = torch.cat((self.z[:,1:,...], 
+                                z_pred[:,-1:,...]), dim=1).detach()
+            self.z_avg = self.z.mean(dim=2)
 
         # create a flat z as per return requirements of gym.Env    
         self.flat_z = self._flatten_latent(self.z)
@@ -133,9 +143,33 @@ class LatentPlanarCircleEnv(gym.Env):
 
         # reward is negative 2-norm distance to target state
         # print(f"self.z.shape: {self.z.shape}, self.target_state.shape: {self.target_state.shape}")
-        # remove batch dimension and only take latest time step
-        norm = torch.norm(self.z[0,-1,...] - self.target_state[0,-1,...]).cpu().numpy()
-        reward = -self.weights['goal_distance'] * norm
+        # remove batch dimension and only take latest time step, then remove action history
+        num_embedding = 384
+        if self.average_pool:
+            z_reward = self.z_avg[0,-1,:num_embedding]
+            target_reward = torch.mean(self.target_state, dim=2)[0,-1,:num_embedding]
+            z_std = torch.mean(self.world_model.info_dict['latent_std'], dim=0)[:num_embedding]
+        else:
+            z_reward = self.z[0,-1,:,:num_embedding]
+            target_reward = self.target_state[0,-1,:,:num_embedding]
+            z_std = self.world_model.info_dict['latent_std'][:,:num_embedding]
+
+        if self.reward_info is not None:
+            term = (z_reward - target_reward) / (z_std + 1e-8)
+            norm = torch.norm(term).cpu().numpy()**2
+        else:
+            term = z_reward - target_reward
+            norm = torch.norm(term).cpu().numpy()**2
+        loss = norm
+        
+        # # try cosine similarity
+        # # patch-wise cosine
+        # assert z_reward.dim() == 2
+        # assert target_reward.dim() == 2
+        # reward = torch.nn.functional.cosine_similarity(z_reward, target_reward, dim=1).mean().cpu().numpy()
+        # loss = 1 - reward
+
+        reward = -self.weights['goal_distance'] * loss
         # we're done if we're within epsilon of the target state
         done = reward > -self.epsilon
 
@@ -161,6 +195,7 @@ class LatentPlanarCircleEnv(gym.Env):
         
         o,z,u = self.world_model.encode(obs, act)
         self.z = z
+        self.z_avg = self.z.mean(dim=2) # average pool over latent dimension
 
         # fig, ax = plt.subplots(figsize=(4,4))
         # latent_obs = self.get_latent_obs(self.z)
@@ -171,7 +206,10 @@ class LatentPlanarCircleEnv(gym.Env):
         # ax.axis('off')
         # fig.savefig("temp_latent_reset.png", bbox_inches='tight', pad_inches=0)
         # plt.close(fig)
-        return self._flatten_latent(z)
+        if self.average_pool:
+            return self._flatten_latent(self.z_avg)
+        else:
+            return self._flatten_latent(self.z)
     
     def reset(self,
               seed:Optional[int]=None, 
@@ -204,16 +242,15 @@ class LatentPlanarCircleEnv(gym.Env):
     
     def _get_obs(self)->np.ndarray:
         # just return z but remove batch dimension
-        return self.z[0,...].detach().cpu().numpy()
+        if self.average_pool:
+            return self.z_avg[0,...].detach().cpu().numpy()
+        else:
+            return self.z[0,:,:,:384].detach().cpu().numpy()
         # return self._flatten_latent(self.z).detach().cpu().numpy()#np.squeeze(self.z.detach().cpu().numpy())
 
     def _flatten_latent(self, latent:torch.Tensor)->torch.Tensor:
         """ Flatten latent tensor """
         return latent.flatten()
-    
-    def _unpack_latent(self, flat_latent:torch.Tensor)->torch.Tensor:
-        # TODO: hardcoded for planarcircle, make adaptable
-        return flat_latent.reshape(1, 196, 404)
     
     def _get_visual_from_latent(self, latent:torch.Tensor)->torch.Tensor:
         """ Get visual part from latent tensor """

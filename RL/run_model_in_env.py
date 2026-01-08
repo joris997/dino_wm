@@ -25,22 +25,22 @@ import matplotlib.pyplot as plt
 import torch
 import cv2
 
-env = make_env(step_in_real_env=True)
+env = make_env(step_in_real_env=True, 
+               average_pool=False,
+               plot_target=False)
 
-folder = '/home/planiacs/gits/dino_wm/logs'
-# run_folder = '2026-01-03/16-06-56'
-# run_folder = '2026-01-03/22-55-08'
-run_folder = '2026-01-04/14-00-43'
+folder = '/home/planiacs/gits/dino_wm/outputs/RL'
+run_folder = '2026-01-06/15-05-15'
 ckpt_folder = os.path.join(folder, run_folder, 'models')
 
 # load the model
 policy = "PPO"
 if policy == "TD3":
-    model = TD3.load(f"logs/{run_folder}/models/{policy}_latent_dynamics", env=env)
+    model = TD3.load(f"outputs/RL/{run_folder}/models/{policy}_latent_dynamics", env=env)
 elif policy == "PPO":
-    model = PPO.load(f"logs/{run_folder}/models/{policy}_latent_dynamics", env=env)
+    model = PPO.load(f"outputs/RL/{run_folder}/models/{policy}_latent_dynamics", env=env)
 elif policy == "SAC":
-    model = SAC.load(f"logs/{run_folder}/models/{policy}_latent_dynamics", env=env)
+    model = SAC.load(f"outputs/RL/{run_folder}/models/{policy}_latent_dynamics", env=env)
 z, _ = env.reset()
 
 # evaluate the model 
