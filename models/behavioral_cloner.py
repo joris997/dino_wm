@@ -1,9 +1,12 @@
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 def mdn_loss(logits, means, logstds, targets):
-    u = targets.unsqueeze(1)  # (B, 1, action_dim)
+    # targets shape: (B, 1, p, a)
+    # but since p is just a repeated dimension, we can flatten it
+    u = targets[:,:,0,:]
     var = torch.exp(2 * logstds)  # (B, num_guassians, action_dim)
 
     log_prob = -0.5 * (
@@ -29,8 +32,8 @@ class BehavioralCloner(nn.Module):
 
         # Token-wise MLP
         self.mlp = nn.Sequential(
-            nn.LayerNorm(self.token_dim + action_dim),
-            nn.Linear(self.token_dim + action_dim, hidden),
+            nn.LayerNorm(self.token_dim),
+            nn.Linear(self.token_dim, hidden),
             nn.ELU(),
             nn.Linear(hidden, hidden),
             nn.ELU(),
@@ -44,18 +47,18 @@ class BehavioralCloner(nn.Module):
         self.fc_means   = nn.Linear(hidden, self.K * self.a)
         self.fc_logstds = nn.Linear(hidden, self.K * self.a)
 
-    def forward(self, z, u_now):
+    def forward(self, z):
         """
         z:      [B, h, p, l]
-        u_now:  [B, p, a]
         """
         B = z.shape[0]
 
         # flatten per token
-        z = z.permute(0, 2, 1, 3).reshape(B, self.p, self.token_dim)  # [B,p,h*l]
+        x = z.permute(0, 2, 1, 3).reshape(B, self.p, self.token_dim)  # [B,p,h*l]
+        # u_now = u_now.permute(0, 2, 1, 3).reshape(B, self.p, self.a*self.h)  # [B,p,a]
 
-        # concat tokenwise action
-        x = torch.cat([z, u_now], dim=-1)        # [B,p,h*l + a]
+        # # concat tokenwise action
+        # x = torch.cat([z, u_now], dim=-1)        # [B,p,h*l + a]
 
         # token-wise MLP
         h = self.mlp(x)                          # [B,p,hidden]
@@ -69,6 +72,25 @@ class BehavioralCloner(nn.Module):
         logstds = self.fc_logstds(h_global).view(B, self.K, self.a)
 
         return logits, means, logstds
+    
+    def mdn_logprob(self, z:torch.Tensor, u:torch.Tensor):
+        # returns the log probability of action u under the MDN output given z
+        # i.e. how likely is action u given state z (in the dataset)
+        logits, means, logstds = self.forward(z)
+        B, K, a = means.shape
+
+        # u = u.unsqueeze(1).expand(-1, K, -1)  # (B, K, a)
+        u = u[:,-1:,:]
+
+        var = torch.exp(2 * logstds)  # (B, K, a)
+        log_gauss = -0.5 * (
+            ((u - means) ** 2 / var) + 
+            2 * logstds +
+            math.log(2 * torch.pi)
+        ).sum(dim=-1)  # (B, K)
+        log_mix = torch.log_softmax(logits, dim=-1)
+        return torch.logsumexp(log_mix + log_gauss, dim=-1)  # (B,)
+
 
 
 # class BehavioralCloner(nn.Module):

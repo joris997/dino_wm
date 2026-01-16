@@ -1,0 +1,15 @@
+defaults:
+  - _self_
+
+idcbf:
+  num_epochs: 10
+  gpu_batch_size: 32
+  num_candidates: 10
+  hidden_dim: 256
+  num_layers: 3
+  lr: 1e-3
+  weight_decay: 1e-6
+
+wandb:
+  entity: "joris997-kth"
+  project: "dino_wm_idcbf"

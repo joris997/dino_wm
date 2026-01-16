@@ -2,6 +2,7 @@ import torch
 import decord
 import pickle
 import numpy as np
+import time
 from pathlib import Path
 from einops import rearrange
 from decord import VideoReader
@@ -86,6 +87,12 @@ class PlanarCircleDataset(TrajDataset):
             n = len(self.seq_lengths)
         self.seq_lengths = self.seq_lengths[:n]
 
+        self.rollouts = []
+        for thread_folder, file_name in self.rollout_map:
+            data = np.load(thread_folder / file_name, mmap_mode='r')
+            self.rollouts.append(data)
+
+
         # open one file to get the dimensions, this is not necessarily thread_0/rollout_0.npz
         sample_file = None
         for thread_folder in self.data_path.glob("thread_*"):
@@ -134,34 +141,38 @@ class PlanarCircleDataset(TrajDataset):
     def get_frames(self, idx, frames):
         thread_folder, file_name = self.rollout_map[idx]
         # get the actions, states, proprio from the file
-        with open(thread_folder / file_name, "rb") as f:
-            data = np.load(f)
-            actions = torch.from_numpy(data['actions']).float()
-            states = torch.from_numpy(data['states']).float()
-            proprio = states  # assuming all state is proprio
-            # optionally drop velocity from states and proprio
-            if not self.with_velocity:
-                states = states[:,:2]
-                proprio = proprio[:,:2]
-            # normalize actions, states, and proprio
-            actions = (actions - self.action_mean) / self.action_std
-            states = (states - self.state_mean) / self.state_std
-            proprio = (proprio - self.proprio_mean) / self.proprio_std
+        # with open(thread_folder / file_name, "rb") as f:
+        #     data = np.load(f)
+        data = self.rollouts[idx]
+        act = torch.from_numpy(data['actions'][frames]).float()
+        state = torch.from_numpy(data['states'][frames]).float()
+        proprio = state  # assuming all state is proprio
+        # optionally drop velocity from states and proprio
+        if not self.with_velocity:
+            state = state[:,:2]
+            proprio = proprio[:,:2]
+        # normalize actions, states, and proprio
+        act = (act - self.action_mean) / self.action_std
+        state = (state - self.state_mean) / self.state_std
+        proprio = (proprio - self.proprio_mean) / self.proprio_std
 
         # get the video frames
         # replace .npz with .mp4 to get video file
         video_file = file_name.replace(".npz", ".mp4")
         video_path = thread_folder / video_file
+        t0 = time.time()
         vr = VideoReader(str(video_path), num_threads=1)
+        # print("Time to init VideoReader:", time.time() - t0)
         image = vr.get_batch(frames)
-        image = image / 255.0
-        image = rearrange(image, "b h w c -> b c h w")
+        # print("Time to read video frames:", time.time() - t0)
+        image = image.permute(0,3,1,2).float().mul_(1.0/255.0)  # [b, c, h, w]
+        # print("Time to rearrange:", time.time() - t0)
         if self.transform:
             image = self.transform(image)
+        # print("Time to load and preprocess images:", time.time() - t0)
+
         # pack it up
         obs = {"visual": image, "proprio": proprio[frames]}
-        act = actions[frames]
-        state = states[frames]
         return obs, act, state, {'shape': 'circle'}
         
     def __getitem__(self, index):

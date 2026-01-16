@@ -11,7 +11,7 @@ device = 'cuda'
 
 folder = '/home/planiacs/gits/dino_wm/outputs'
 # run_folder = '2025-12-23/13-32-59' # only A_to_B data
-run_folder = '2026-01-02/13-16-08' # A_to_B + biased_brown + white
+run_folder = '2026-01-08/14-17-51' # A_to_B + biased_brown + white
 ckpt_folder = os.path.join(folder, run_folder)
 world_model, cfg = load_vit(ckpt_folder)
 

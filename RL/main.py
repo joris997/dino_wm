@@ -30,7 +30,7 @@ device = 'cuda'
 
 folder = '/home/planiacs/gits/dino_wm/outputs'
 # run_folder = '2025-12-23/13-32-59' # only A_to_B data
-run_folder = '2026-01-02/13-16-08' # A_to_B + biased_brown + white
+run_folder = '2026-01-08/14-17-51' # A_to_B + biased_brown + white
 ckpt_folder = os.path.join(folder, run_folder)
 
 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     wandb.login()
     config = {
         "policy_type": "MlpPolicy",
-        "total_timesteps": int(1e6),
+        "total_timesteps": int(1e5),
         "env_name": "LatentPlanarCircle-v0",
     }
     # wandb.tensorboard.patch(root_logdir="./outputs/")
@@ -160,7 +160,7 @@ if __name__ == "__main__":
                     tensorboard_log=f"outputs/RL/{current_date}/{current_time}/runs")
     elif policy == "PPO":
         model = PPO("CnnPolicy", env, verbose=0,
-                    gamma=0.995, learning_rate=1e-4,
+                    gamma=0.995, learning_rate=1e-3,
                     vf_coef=0.25, normalize_advantage=True,
                     policy_kwargs=policy_kwargs,device='cuda',
                     tensorboard_log=f"outputs/RL/{current_date}/{current_time}/runs") 
