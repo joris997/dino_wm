@@ -94,3 +94,53 @@ class ProprioceptiveDecoding(nn.Module):
         x = self.patch_deembed(x)
         x = x.permute(0, 2, 1)
         return x
+    
+class ProprioceptiveEmbeddingMLP(nn.Module):
+    def __init__(
+        self,
+        in_chans=2,
+        emb_dim=384,
+        layers=2,
+    ):
+        super().__init__()
+        # what comes in is [B, T, D]
+        # what should come out is [B, T, 1, 384]
+        self.in_chans = in_chans
+        self.emb_dim = emb_dim
+        mlp_layers = []
+        for i in range(layers):
+            input_dim = in_chans if i == 0 else emb_dim
+            output_dim = emb_dim if i < layers - 1 else emb_dim
+            mlp_layers.append(nn.Linear(input_dim, output_dim))
+            if i < layers - 1:
+                mlp_layers.append(nn.ReLU())
+        self.mlp = nn.Sequential(*mlp_layers)
+    def forward(self, x):
+        # x: proprioceptive vectors of shape [B T D]
+        x = self.mlp(x)
+        return x
+    
+class ProprioceptiveDecodingMLP(nn.Module):
+    def __init__(
+        self,
+        out_chans=2,
+        emb_dim=384,
+        layers=2,
+    ):
+        super().__init__()
+        # what comes in is [B, T, 1, 384]
+        # what should come out is [B, T, D]
+        self.out_chans = out_chans
+        self.emb_dim = emb_dim
+        mlp_layers = []
+        for i in range(layers):
+            input_dim = emb_dim if i == 0 else emb_dim
+            output_dim = emb_dim if i < layers - 1 else out_chans
+            mlp_layers.append(nn.Linear(input_dim, output_dim))
+            if i < layers - 1:
+                mlp_layers.append(nn.ReLU())
+        self.mlp = nn.Sequential(*mlp_layers)
+    def forward(self, x):
+        # x: proprioceptive vectors of shape [B T D]
+        x = self.mlp(x)
+        return x

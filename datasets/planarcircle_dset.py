@@ -141,11 +141,13 @@ class PlanarCircleDataset(TrajDataset):
     def get_frames(self, idx, frames):
         thread_folder, file_name = self.rollout_map[idx]
         # get the actions, states, proprio from the file
+        with np.load(thread_folder / file_name, allow_pickle=False, mmap_mode='r') as data:
         # with open(thread_folder / file_name, "rb") as f:
-        #     data = np.load(f)
-        data = self.rollouts[idx]
-        act = torch.from_numpy(data['actions'][frames]).float()
-        state = torch.from_numpy(data['states'][frames]).float()
+            # data = np.load(f)
+            # data = self.rollouts[idx]
+            act = torch.from_numpy(data['actions'][frames]).float()
+            state = torch.from_numpy(data['states'][frames]).float()
+
         proprio = state  # assuming all state is proprio
         # optionally drop velocity from states and proprio
         if not self.with_velocity:
